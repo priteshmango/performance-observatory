@@ -17,14 +17,10 @@ class StorageManager
 
     public function store(array $data): void
     {
-        if (config('observatory.storage.async', true) && function_exists('defer')) {
-            \defer(function () use ($data) {
-                $this->saveToDatabase($data);
-            });
-        } else {
-            // Synchronous fallback or terminable middleware handles it
-            $this->saveToDatabase($data);
-        }
+        // Since this is called from Laravel's terminating() callback,
+        // the response has already been sent to the browser.
+        // We can safely save synchronously here without blocking the user.
+        $this->saveToDatabase($data);
     }
 
     protected function saveToDatabase(array $data): void

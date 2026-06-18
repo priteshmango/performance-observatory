@@ -41,9 +41,23 @@ class ObservatoryManager
         // Load collectors based on config
         $collectorMapping = [
             'request' => \Performance\Observatory\Collectors\RequestCollector::class,
-            // 'server' => \Performance\Observatory\Collectors\ServerCollector::class,
-            // 'database' => \Performance\Observatory\Collectors\DatabaseCollector::class,
-            // Add other collectors here
+            'database' => \Performance\Observatory\Collectors\DatabaseCollector::class,
+            'route' => \Performance\Observatory\Collectors\RouteCollector::class,
+            'middleware' => \Performance\Observatory\Collectors\MiddlewareCollector::class,
+            'controller' => \Performance\Observatory\Collectors\ControllerCollector::class,
+            'cache' => \Performance\Observatory\Collectors\CacheCollector::class,
+            'redis' => \Performance\Observatory\Collectors\RedisCollector::class,
+            'queue' => \Performance\Observatory\Collectors\QueueCollector::class,
+            'view' => \Performance\Observatory\Collectors\ViewCollector::class,
+            'api' => \Performance\Observatory\Collectors\ApiCollector::class,
+            'filesystem' => \Performance\Observatory\Collectors\FilesystemCollector::class,
+            'event' => \Performance\Observatory\Collectors\EventCollector::class,
+            'mail' => \Performance\Observatory\Collectors\MailCollector::class,
+            'session' => \Performance\Observatory\Collectors\SessionCollector::class,
+            'frontend' => \Performance\Observatory\Collectors\FrontendCollector::class,
+            'memory' => \Performance\Observatory\Collectors\MemoryCollector::class,
+            'cpu' => \Performance\Observatory\Collectors\CpuCollector::class,
+            'server' => \Performance\Observatory\Collectors\ServerCollector::class,
         ];
 
         $config = config('observatory.collectors', []);

@@ -49,6 +49,12 @@ class PerformanceObservatoryServiceProvider extends ServiceProvider
      */
     protected function shouldSample(): bool
     {
+        // Don't track observatory's own internal routes
+        $prefix = config('observatory.route_prefix', 'observatory');
+        if (request()->is($prefix) || request()->is($prefix . '/*')) {
+            return false;
+        }
+
         $sampleRate = config('observatory.sample_rate', 100);
         if ($sampleRate >= 100) {
             return true;
