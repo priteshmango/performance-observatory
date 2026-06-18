@@ -49,10 +49,23 @@ class PerformanceObservatoryServiceProvider extends ServiceProvider
      */
     protected function shouldSample(): bool
     {
-        // Don't track observatory's own internal routes
+        // Don't track observatory's own internal routes or common debug tools
         $prefix = config('observatory.route_prefix', 'observatory');
-        if (request()->is($prefix) || request()->is($prefix . '/*')) {
-            return false;
+        $ignoredPaths = [
+            $prefix,
+            $prefix . '/*',
+            '_debugbar/*',
+            'vendor/*',
+            'build/*',
+            'livewire/*',
+            'horizon/*',
+            'telescope/*'
+        ];
+
+        foreach ($ignoredPaths as $ignoredPath) {
+            if (request()->is($ignoredPath)) {
+                return false;
+            }
         }
 
         $sampleRate = config('observatory.sample_rate', 100);
