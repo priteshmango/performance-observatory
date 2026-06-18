@@ -4,47 +4,86 @@ namespace Performance\Observatory\Engines;
 
 class RootCauseEngine
 {
-    public function analyze(array $data): array
+    public function analyze(array $metrics, float $totalDuration): array
     {
-        $causes = [];
+        $insights = [];
 
-        // Database Analysis
-        if (isset($data['metrics']['database'])) {
-            $db = $data['metrics']['database'];
+        // 1. Boot Time Analysis
+        $bootTime = $metrics['request']['boot_duration'] ?? 0;
+        if ($bootTime > 0.2) {
+            $insights[] = [
+                'type' => 'warning',
+                'title' => 'Slow Framework Boot',
+                'description' => 'Laravel took ' . round($bootTime * 1000) . 'ms just to boot up. This is usually caused by heavy service providers or un-cached configurations.',
+                'solution' => 'Run `php artisan optimize` or `php artisan config:cache` and `php artisan route:cache` on your production server.'
+            ];
+        }
+
+        // 2. Database Analysis
+        if (isset($metrics['database'])) {
+            $db = $metrics['database'];
             
-            // Check for slow total DB time
-            if ($db['total_time'] > 500) {
-                $causes[] = [
-                    'severity' => 'critical',
-                    'message' => 'Database consumes a significant portion of request time (' . round($db['total_time']) . 'ms).',
-                ];
+            // N+1 Query Detection (Duplicate Queries)
+            if (!empty($db['queries'])) {
+                $queryCounts = array_count_values(array_column($db['queries'], 'sql'));
+                foreach ($queryCounts as $sql => $count) {
+                    if ($count > 3) {
+                        $insights[] = [
+                            'type' => 'critical',
+                            'title' => 'N+1 Query Problem Detected',
+                            'description' => "The identical query was executed {$count} times during this request.",
+                            'solution' => 'Use Eloquent Eager Loading (`with()`) to load relationships upfront instead of lazy loading them in a loop.'
+                        ];
+                        break; // Only show one N+1 warning to avoid clutter
+                    }
+                }
             }
 
-            // Check for N+1 issues
-            if ($db['total_queries'] > 50) {
-                $causes[] = [
-                    'severity' => 'high',
-                    'message' => 'High number of database queries (' . $db['total_queries'] . '). Possible N+1 issue.',
+            // Slow Queries
+            if (!empty($db['queries'])) {
+                foreach ($db['queries'] as $query) {
+                    if ($query['time'] > 100) {
+                        $insights[] = [
+                            'type' => 'critical',
+                            'title' => 'Slow Database Query',
+                            'description' => 'A query took ' . round($query['time']) . 'ms to execute.',
+                            'solution' => 'Analyze the query using `EXPLAIN`. You likely need to add a database index to the columns used in the WHERE or ORDER BY clauses.'
+                        ];
+                        break;
+                    }
+                }
+            }
+
+            if ($db['total_queries'] > 30 && ($metrics['cache']['hits'] ?? 0) === 0) {
+                $insights[] = [
+                    'type' => 'warning',
+                    'title' => 'High DB Load & No Cache',
+                    'description' => "Executed {$db['total_queries']} queries but no cache hits were recorded.",
+                    'solution' => 'Implement Redis or Memcached using `Cache::remember()` for frequently accessed data that rarely changes.'
                 ];
             }
         }
 
-        // Backend Processing Analysis
-        if (isset($data['total_duration'])) {
-            if ($data['total_duration'] > 1.5) {
-                $causes[] = [
-                    'severity' => 'critical',
-                    'message' => 'Total request duration is very slow (' . round($data['total_duration'], 2) . 's).',
-                ];
-            }
+        // 3. Application Execution / Payload Analysis
+        $payloadSize = $metrics['request']['payload_size'] ?? 0;
+        if ($payloadSize > 500000) { // 500kb
+            $insights[] = [
+                'type' => 'warning',
+                'title' => 'Massive Payload Size',
+                'description' => 'The server processed or returned over ' . round($payloadSize / 1024) . 'KB of data.',
+                'solution' => 'Implement pagination, select only specific columns from the database, or compress the response.'
+            ];
         }
 
-        // Missing Indexes Placeholder (This would involve analyzing the EXPLAIN payload from DB collector)
-        // ...
+        if (empty($insights)) {
+            $insights[] = [
+                'type' => 'success',
+                'title' => 'Optimal Performance',
+                'description' => 'No major bottlenecks detected in this request.',
+                'solution' => 'Keep up the good work!'
+            ];
+        }
 
-        // Sort by severity (critical, high, medium, low)
-        // In a real app, we'd map severity to numeric scores to sort.
-
-        return $causes;
+        return $insights;
     }
 }

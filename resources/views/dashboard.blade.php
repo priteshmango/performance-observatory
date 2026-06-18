@@ -38,8 +38,28 @@
             </div>
         </header>
 
-        <!-- Main Content Area -->
-        <div class="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm shadow-xl">
+        <!-- Tab Navigation -->
+        <nav class="flex space-x-4 mb-8 border-b border-white/10" aria-label="Tabs">
+            <button @click="activeTab = 'live'" :class="activeTab === 'live' ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-white/20'" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                Live Traffic
+            </button>
+            <button @click="activeTab = 'server'; runScan('server')" :class="activeTab === 'server' ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-white/20'" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                Server Scanner
+            </button>
+            <button @click="activeTab = 'database'; runScan('database')" :class="activeTab === 'database' ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-white/20'" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                Database Scanner
+            </button>
+            <button @click="activeTab = 'backend'; runScan('backend')" :class="activeTab === 'backend' ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-white/20'" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                Backend Scanner
+            </button>
+            <button @click="activeTab = 'frontend'; runScan('frontend')" :class="activeTab === 'frontend' ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-white/20'" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                Frontend Scanner
+            </button>
+        </nav>
+
+        <!-- Live Traffic Content Area -->
+        <div x-show="activeTab === 'live'" class="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm shadow-xl">
             <h2 class="text-xl font-semibold mb-6 flex items-center gap-2">
                 <svg class="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -81,6 +101,65 @@
                 </table>
             </div>
         </div>
+
+        <!-- Scanner Content Area -->
+        <div x-show="activeTab !== 'live'" class="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm shadow-xl" style="display: none;">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-semibold capitalize" x-text="activeTab + ' Vulnerability Scan'"></h2>
+                <button @click="runScan(activeTab)" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors">
+                    Rescan Now
+                </button>
+            </div>
+
+            <div x-show="scanning" class="py-12 text-center text-gray-400 animate-pulse">
+                <svg class="animate-spin h-8 w-8 mx-auto text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Scanning <span x-text="activeTab"></span> configuration and codebase...
+            </div>
+
+            <div x-show="!scanning" class="space-y-4">
+                <template x-for="(vuln, idx) in scanResults[activeTab] || []" :key="idx">
+                    <div class="p-4 rounded-lg border flex gap-4 items-start"
+                         :class="{
+                             'bg-red-500/10 border-red-500/30': vuln.severity === 'critical',
+                             'bg-orange-500/10 border-orange-500/30': vuln.severity === 'high' || vuln.severity === 'warning',
+                             'bg-green-500/10 border-green-500/30': vuln.severity === 'success'
+                         }">
+                        
+                        <div class="mt-1" x-show="vuln.severity === 'critical' || vuln.severity === 'high'">
+                            <svg class="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                        </div>
+                        <div class="mt-1" x-show="vuln.severity === 'warning'">
+                            <svg class="w-6 h-6 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        </div>
+                        <div class="mt-1" x-show="vuln.severity === 'success'">
+                            <svg class="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        </div>
+
+                        <div>
+                            <h5 class="font-semibold text-white text-md mb-1" x-text="vuln.title"></h5>
+                            <p class="text-sm text-gray-300 mb-3" x-text="vuln.description"></p>
+                            
+                            <div class="bg-black/30 rounded px-3 py-2 border border-white/5">
+                                <span class="text-xs font-bold uppercase tracking-wider block mb-1"
+                                      :class="{
+                                          'text-red-300': vuln.severity === 'critical',
+                                          'text-orange-300': vuln.severity === 'high' || vuln.severity === 'warning',
+                                          'text-green-300': vuln.severity === 'success'
+                                      }">Remediation / Solution</span>
+                                <p class="text-sm font-mono text-gray-200" x-text="vuln.solution"></p>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                
+                <div x-show="(scanResults[activeTab] || []).length === 0 && !scanning" class="text-center py-12 text-gray-500">
+                    Run a scan to analyze <span x-text="activeTab"></span> vulnerabilities.
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Details Modal -->
@@ -103,10 +182,60 @@
                     </button>
                 </div>
                 <div class="px-6 py-6" x-show="loadingDetails">
-                    <p class="text-gray-400 animate-pulse text-center py-10">Fetching deep metrics...</p>
+                    <p class="text-gray-400 animate-pulse text-center py-10">Fetching deep metrics and generating insights...</p>
                 </div>
                 <div class="px-6 py-6 text-gray-300" x-show="!loadingDetails && requestDetails">
                     
+                    <!-- Actionable Insights Section -->
+                    <template x-if="requestDetails?.insights && requestDetails.insights.length > 0">
+                        <div class="mb-8">
+                            <h4 class="font-semibold text-white mb-4 border-b border-white/10 pb-2 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                </svg>
+                                Actionable Insights
+                            </h4>
+                            <div class="space-y-4">
+                                <template x-for="(insight, idx) in requestDetails.insights">
+                                    <div class="p-4 rounded-lg border flex gap-4 items-start"
+                                         :class="{
+                                             'bg-red-500/10 border-red-500/30': insight.type === 'critical',
+                                             'bg-orange-500/10 border-orange-500/30': insight.type === 'warning',
+                                             'bg-green-500/10 border-green-500/30': insight.type === 'success'
+                                         }">
+                                        
+                                        <!-- Icon based on type -->
+                                        <div class="mt-1" x-show="insight.type === 'critical'">
+                                            <svg class="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                        </div>
+                                        <div class="mt-1" x-show="insight.type === 'warning'">
+                                            <svg class="w-6 h-6 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        </div>
+                                        <div class="mt-1" x-show="insight.type === 'success'">
+                                            <svg class="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        </div>
+
+                                        <div>
+                                            <h5 class="font-semibold text-white text-md mb-1" x-text="insight.title"></h5>
+                                            <p class="text-sm text-gray-300 mb-3" x-text="insight.description"></p>
+                                            
+                                            <div class="bg-black/30 rounded px-3 py-2 border border-white/5">
+                                                <span class="text-xs font-bold uppercase tracking-wider block mb-1"
+                                                      :class="{
+                                                          'text-red-300': insight.type === 'critical',
+                                                          'text-orange-300': insight.type === 'warning',
+                                                          'text-green-300': insight.type === 'success'
+                                                      }">Recommended Solution</span>
+                                                <p class="text-sm font-mono text-gray-200" x-text="insight.solution"></p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <h4 class="font-semibold text-white mb-4 border-b border-white/10 pb-2">Request Overview</h4>
                     <div class="grid grid-cols-2 gap-6 mb-8">
                         <div class="bg-black/50 rounded-lg p-4 border border-white/5">
                             <p class="text-xs text-gray-500 uppercase tracking-wider mb-1">Target URL</p>
@@ -121,6 +250,33 @@
                                 <p class="text-xs text-gray-500 uppercase tracking-wider mb-1">Method</p>
                                 <p class="text-lg font-bold" x-text="requestDetails?.method"></p>
                             </div>
+                        </div>
+                    </div>
+
+                    <h4 class="font-semibold text-white mb-4 border-b border-white/10 pb-2">Time Breakdown</h4>
+                    <div class="bg-black/50 rounded-lg border border-white/5 overflow-hidden mb-8 p-4">
+                        <div class="flex items-center justify-between mb-2 text-sm">
+                            <span class="text-gray-400">Framework Boot</span>
+                            <span class="font-mono text-blue-400" x-text="Math.round((requestDetails?.metrics?.request?.boot_duration || 0) * 1000) + 'ms'"></span>
+                        </div>
+                        <div class="w-full bg-white/5 rounded-full h-2 mb-4">
+                            <div class="bg-blue-400 h-2 rounded-full" :style="'width: ' + Math.min(100, Math.max(1, ((requestDetails?.metrics?.request?.boot_duration || 0) / requestDetails?.total_duration) * 100)) + '%'"></div>
+                        </div>
+
+                        <div class="flex items-center justify-between mb-2 text-sm">
+                            <span class="text-gray-400">Database Queries</span>
+                            <span class="font-mono text-orange-400" x-text="Math.round(requestDetails?.metrics?.database?.total_time || 0) + 'ms'"></span>
+                        </div>
+                        <div class="w-full bg-white/5 rounded-full h-2 mb-4">
+                            <div class="bg-orange-400 h-2 rounded-full" :style="'width: ' + Math.min(100, Math.max(1, ((requestDetails?.metrics?.database?.total_time || 0) / 1000 / requestDetails?.total_duration) * 100)) + '%'"></div>
+                        </div>
+
+                        <div class="flex items-center justify-between mb-2 text-sm">
+                            <span class="text-gray-400">Application Execution (Controllers, APIs, Views)</span>
+                            <span class="font-mono text-purple-400" x-text="Math.max(0, Math.round(requestDetails?.total_duration * 1000) - Math.round((requestDetails?.metrics?.request?.boot_duration || 0) * 1000) - Math.round(requestDetails?.metrics?.database?.total_time || 0)) + 'ms'"></span>
+                        </div>
+                        <div class="w-full bg-white/5 rounded-full h-2">
+                            <div class="bg-purple-400 h-2 rounded-full" :style="'width: ' + Math.min(100, Math.max(1, (Math.max(0, requestDetails?.total_duration - (requestDetails?.metrics?.request?.boot_duration || 0) - ((requestDetails?.metrics?.database?.total_time || 0) / 1000)) / requestDetails?.total_duration) * 100)) + '%'"></div>
                         </div>
                     </div>
 
@@ -140,8 +296,8 @@
                             <template x-for="(query, idx) in (requestDetails?.metrics?.database?.queries || [])">
                                 <div class="border-b border-white/5 pb-2">
                                     <div class="text-orange-400 float-right" x-text="query.time.toFixed(2) + 'ms'"></div>
-                                    <div x-text="query.sql" class="mb-1"></div>
-                                    <div class="text-gray-500" x-show="query.bindings.length" x-text="'Bindings: ' + JSON.stringify(query.bindings)"></div>
+                                    <div x-text="query.sql" class="mb-1 whitespace-pre-wrap break-all"></div>
+                                    <div class="text-gray-500 break-all" x-show="query.bindings.length" x-text="'Bindings: ' + JSON.stringify(query.bindings)"></div>
                                 </div>
                             </template>
                             <div x-show="!requestDetails?.metrics?.database?.queries?.length" class="text-gray-500">No database queries executed.</div>
@@ -171,15 +327,23 @@
     <script>
         function dashboardData() {
             return {
+                activeTab: 'live',
                 requests: [],
                 loading: true,
                 selectedRequest: null,
                 requestDetails: null,
                 loadingDetails: false,
+                scanning: false,
+                scanResults: {
+                    server: [],
+                    database: [],
+                    backend: [],
+                    frontend: []
+                },
                 init() {
                     this.fetchData();
                     setInterval(() => {
-                        if (!this.selectedRequest) {
+                        if (!this.selectedRequest && this.activeTab === 'live') {
                             this.fetchData();
                         }
                     }, 5000);
@@ -210,6 +374,21 @@
                         .catch(err => {
                             console.error('Failed to load details', err);
                             this.loadingDetails = false;
+                        });
+                },
+                runScan(type) {
+                    this.scanning = true;
+                    this.scanResults[type] = [];
+                    
+                    fetch('{{ url(config("observatory.route_prefix") . "/api/scan/") }}/' + type)
+                        .then(res => res.json())
+                        .then(data => {
+                            this.scanResults[type] = data.data;
+                            this.scanning = false;
+                        })
+                        .catch(err => {
+                            console.error('Scan failed', err);
+                            this.scanning = false;
                         });
                 }
             }

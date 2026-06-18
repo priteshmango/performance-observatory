@@ -46,7 +46,31 @@ class ObservatoryController extends Controller
         $request->metrics = json_decode($request->metrics_payload, true);
         unset($request->metrics_payload);
 
+        // Generate actionable insights dynamically
+        $engine = new \Performance\Observatory\Engines\RootCauseEngine();
+        $request->insights = $engine->analyze($request->metrics, (float) $request->total_duration);
+
         return response()->json($request);
+    }
+
+    public function scanServer(\Performance\Observatory\Engines\StaticAnalysisEngine $engine)
+    {
+        return response()->json(['data' => $engine->scanServer()]);
+    }
+
+    public function scanDatabase(\Performance\Observatory\Engines\StaticAnalysisEngine $engine)
+    {
+        return response()->json(['data' => $engine->scanDatabase()]);
+    }
+
+    public function scanBackend(\Performance\Observatory\Engines\StaticAnalysisEngine $engine)
+    {
+        return response()->json(['data' => $engine->scanBackend()]);
+    }
+
+    public function scanFrontend(\Performance\Observatory\Engines\StaticAnalysisEngine $engine)
+    {
+        return response()->json(['data' => $engine->scanFrontend()]);
     }
 
     public function storeFrontendMetrics(Request $request)

@@ -59,7 +59,10 @@ class PerformanceObservatoryServiceProvider extends ServiceProvider
             'build/*',
             'livewire/*',
             'horizon/*',
-            'telescope/*'
+            'telescope/*',
+            'favicon.ico',
+            'robots.txt',
+            '.well-known/*'
         ];
 
         foreach ($ignoredPaths as $ignoredPath) {

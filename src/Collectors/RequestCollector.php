@@ -16,6 +16,11 @@ class RequestCollector extends AbstractCollector
     {
         $request = $this->app->make('request');
         
+        $laravelStart = defined('LARAVEL_START') ? LARAVEL_START : $_SERVER['REQUEST_TIME_FLOAT'] ?? microtime(true);
+        $bootDuration = microtime(true) - $laravelStart;
+        
+        $this->record('laravel_start', $laravelStart);
+        $this->record('boot_duration', $bootDuration);
         $this->record('start_time', $this->manager->getStartTime());
         $this->record('method', $request->method());
         $this->record('url', $request->fullUrl());
