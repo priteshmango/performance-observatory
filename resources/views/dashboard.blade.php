@@ -380,14 +380,23 @@
                     this.scanning = true;
                     this.scanResults[type] = [];
                     
-                    fetch('{{ url(config("observatory.route_prefix") . "/api/scan/") }}/' + type)
-                        .then(res => res.json())
+                    fetch('{{ url(config("observatory.route_prefix") . "/api/scan") }}/' + type)
+                        .then(res => {
+                            if (!res.ok) throw new Error('Network response was not ok');
+                            return res.json();
+                        })
                         .then(data => {
                             this.scanResults[type] = data.data;
                             this.scanning = false;
                         })
                         .catch(err => {
                             console.error('Scan failed', err);
+                            this.scanResults[type] = [{
+                                severity: 'critical',
+                                title: 'Scanner Failed to Run',
+                                description: 'The scanner could not complete its analysis. This could be due to a server error or a missing route.',
+                                solution: 'Try running `php artisan route:clear` and refreshing the page.'
+                            }];
                             this.scanning = false;
                         });
                 }
