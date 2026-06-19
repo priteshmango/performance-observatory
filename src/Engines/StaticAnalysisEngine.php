@@ -58,22 +58,42 @@ class StaticAnalysisEngine
         $connection = DB::connection();
         $driver = $connection->getDriverName();
 
+        // Check for Database Cache Driver (Performance Killer)
+        if (config('cache.default') === 'database') {
+            $vulnerabilities[] = [
+                'severity' => 'critical',
+                'title' => 'Database Cache Driver in Use (Severe Bottleneck)',
+                'description' => 'You are using your relational database to store cache data. This causes massive locking issues and turns fast cache lookups into 700ms+ slow queries during heavy traffic.',
+                'solution' => 'Change `CACHE_DRIVER=database` to `CACHE_DRIVER=redis` or `memcached` in your .env file immediately.'
+            ];
+        }
+
+        // Check for Database Session Driver
+        if (config('session.driver') === 'database') {
+            $vulnerabilities[] = [
+                'severity' => 'high',
+                'title' => 'Database Session Driver',
+                'description' => 'You are storing user sessions in the database. Every single page click forces a database write, crippling performance.',
+                'solution' => 'Change `SESSION_DRIVER=database` to `SESSION_DRIVER=redis` or `cookie` in your .env file.'
+            ];
+        }
+
         if ($driver === 'mysql') {
             try {
                 $tables = DB::select("
                     SELECT TABLE_NAME, TABLE_ROWS 
                     FROM information_schema.TABLES 
                     WHERE TABLE_SCHEMA = DATABASE() 
-                    AND TABLE_ROWS > 10000
+                    AND TABLE_ROWS > 1000
                 ");
 
                 foreach ($tables as $table) {
                     $indexes = DB::select("SHOW INDEX FROM `{$table->TABLE_NAME}`");
                     if (count($indexes) <= 1) { 
                         $vulnerabilities[] = [
-                            'severity' => 'high',
+                            'severity' => 'warning',
                             'title' => "Dangerous Database Table: {$table->TABLE_NAME}",
-                            'description' => "The database table '{$table->TABLE_NAME}' has grown very large (over 10,000 rows), but it is missing 'Indexes'. Without indexes, the database has to scan every single row one-by-one to find data, which will freeze your website during heavy traffic.",
+                            'description' => "The database table '{$table->TABLE_NAME}' has grown very large, but it is missing 'Indexes'. Without indexes, the database has to scan every single row one-by-one to find data.",
                             'solution' => "Please create a database migration and add an index to the columns you frequently search by. Example code: `$table->index('user_id');`"
                         ];
                     }
@@ -87,7 +107,7 @@ class StaticAnalysisEngine
             $vulnerabilities[] = [
                 'severity' => 'success',
                 'title' => 'Database is Optimized',
-                'description' => 'We did not find any dangerously large un-indexed tables.',
+                'description' => 'We did not find any dangerously large un-indexed tables or bad configuration drivers.',
                 'solution' => 'No database structure changes are needed right now.'
             ];
         }
