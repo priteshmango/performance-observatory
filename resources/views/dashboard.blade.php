@@ -60,17 +60,23 @@
 
         <!-- Live Traffic Content Area -->
         <div x-show="activeTab === 'live'" class="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm shadow-xl">
-            <h2 class="text-xl font-semibold mb-6 flex items-center gap-2">
-                <svg class="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                Recent Requests
-            </h2>
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-semibold flex items-center gap-2">
+                    <svg class="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Recent Requests
+                </h2>
+                <div>
+                    <input type="text" x-model="searchQuery" placeholder="Filter by path, method, or status..." class="bg-black/50 border border-white/10 rounded-lg px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 w-64">
+                </div>
+            </div>
             
             <div class="overflow-x-auto">
                 <table class="w-full text-left">
                     <thead>
                         <tr class="border-b border-white/10 text-gray-400 text-sm">
+                            <th class="pb-3 font-medium">Time</th>
                             <th class="pb-3 font-medium">Path</th>
                             <th class="pb-3 font-medium">Method</th>
                             <th class="pb-3 font-medium text-right">Status</th>
@@ -79,11 +85,15 @@
                         </tr>
                     </thead>
                     <tbody class="text-sm">
-                        <template x-for="req in requests" :key="req.request_id">
+                        <template x-for="req in filteredRequests" :key="req.request_id">
                             <tr @click="openDetails(req.request_id)" class="border-b border-white/5 hover:bg-white/10 transition-colors group cursor-pointer">
+                                <td class="py-4 text-gray-400 whitespace-nowrap text-xs" x-text="new Date(req.created_at || req.timestamp).toLocaleString()"></td>
                                 <td class="py-4 font-mono text-gray-300 group-hover:text-white" x-text="req.url"></td>
                                 <td class="py-4">
-                                    <span class="px-2 py-1 bg-white/10 text-xs rounded-md text-gray-300" x-text="req.method"></span>
+                                    <div class="flex items-center gap-2">
+                                        <span class="px-2 py-1 bg-white/10 text-xs rounded-md text-gray-300" x-text="req.method"></span>
+                                        <span x-show="req.request_type === 'AJAX / API'" class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-md border border-blue-500/30">AJAX</span>
+                                    </div>
                                 </td>
                                 <td class="py-4 text-right">
                                     <span class="px-2 py-1 rounded-md text-xs font-medium" 
@@ -95,7 +105,10 @@
                             </tr>
                         </template>
                         <tr x-show="loading" class="animate-pulse">
-                            <td colspan="5" class="py-8 text-center text-gray-500">Loading telemetry data...</td>
+                            <td colspan="6" class="py-8 text-center text-gray-500">Loading telemetry data...</td>
+                        </tr>
+                        <tr x-show="!loading && filteredRequests.length === 0">
+                            <td colspan="6" class="py-8 text-center text-gray-500">No requests found matching your filter.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -328,6 +341,7 @@
         function dashboardData() {
             return {
                 activeTab: 'live',
+                searchQuery: '',
                 requests: [],
                 loading: true,
                 selectedRequest: null,
@@ -339,6 +353,17 @@
                     database: [],
                     backend: [],
                     frontend: []
+                },
+                get filteredRequests() {
+                    if (this.searchQuery === '') {
+                        return this.requests;
+                    }
+                    const q = this.searchQuery.toLowerCase();
+                    return this.requests.filter(req => {
+                        return (req.url && req.url.toLowerCase().includes(q)) || 
+                               (req.method && req.method.toLowerCase().includes(q)) ||
+                               (req.status && req.status.toString().includes(q));
+                    });
                 },
                 init() {
                     this.fetchData();

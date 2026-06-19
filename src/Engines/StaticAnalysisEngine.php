@@ -104,26 +104,42 @@ class StaticAnalysisEngine
         
         foreach ($files as $file) {
             if ($file->getExtension() === 'php') {
-                $content = file_get_contents($file->getRealPath());
+                $lines = file($file->getRealPath());
                 
-                // Bad Practice 1: env() helper outside of config
-                if (preg_match('/\benv\(/', $content)) {
-                    $vulnerabilities[] = [
-                        'severity' => 'critical',
-                        'title' => 'Fatal Error Risk: env() helper used directly',
-                        'description' => "We found the `env()` function being used inside your code here: `{$file->getRelativePathname()}`. If you optimize your server (which you should!), this function will start returning NULL and break your live site.",
-                        'solution' => 'Please open that file and replace the `env("SOMETHING")` call with `config("app.something")`. Then put the env call inside your config/app.php file.'
-                    ];
-                }
+                foreach ($lines as $lineNumber => $line) {
+                    // Line numbers are 0-indexed in arrays, so add 1
+                    $actualLine = $lineNumber + 1;
 
-                // Bad Practice 2: Queries in loops
-                if (preg_match('/foreach.*\{.*(->save\(|->update\(|->delete\().*\}/is', $content)) {
-                    $vulnerabilities[] = [
-                        'severity' => 'high',
-                        'title' => 'Website Freezing Loop Detected',
-                        'description' => "We detected database writing inside a loop in this file: `{$file->getRelativePathname()}`. This means if you have 100 items, it makes 100 separate database connections, which will cripple your database server.",
-                        'solution' => 'Please refactor this code. Instead of saving inside the loop, prepare an array of data and use Laravel\'s bulk `insert()` or `upsert()` method outside the loop.'
-                    ];
+                    // Bad Practice 1: env() helper outside of config
+                    if (preg_match('/\benv\(/', $line)) {
+                        $vulnerabilities[] = [
+                            'severity' => 'critical',
+                            'title' => 'Fatal Error Risk: env() helper used directly',
+                            'description' => "We found the `env()` function being used inside your code here: `{$file->getRelativePathname()}` on Line {$actualLine}. If you optimize your server, this function will start returning NULL and break your live site.",
+                            'solution' => 'Please open that file, go to line ' . $actualLine . ', and replace the `env("SOMETHING")` call with `config("app.something")`. Then put the env call inside your config/app.php file.'
+                        ];
+                    }
+
+                    // Bad Practice 2: Queries in loops
+                    if (preg_match('/(->save\(|->update\(|->delete\()/', $line)) {
+                        // Very basic context check: if the file has a foreach loop before this line
+                        $hasLoop = false;
+                        for ($i = max(0, $lineNumber - 10); $i < $lineNumber; $i++) {
+                            if (strpos($lines[$i], 'foreach') !== false || strpos($lines[$i], 'while') !== false) {
+                                $hasLoop = true;
+                                break;
+                            }
+                        }
+                        
+                        if ($hasLoop) {
+                            $vulnerabilities[] = [
+                                'severity' => 'high',
+                                'title' => 'Website Freezing Loop Detected',
+                                'description' => "We detected database writing near a loop in this file: `{$file->getRelativePathname()}` around Line {$actualLine}. This means if you have 100 items, it makes 100 separate database connections.",
+                                'solution' => 'Please refactor this code. Instead of saving inside the loop, prepare an array of data and use Laravel\'s bulk `insert()` or `upsert()` method outside the loop.'
+                            ];
+                        }
+                    }
                 }
             }
         }

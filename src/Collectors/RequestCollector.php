@@ -23,6 +23,13 @@ class RequestCollector extends AbstractCollector
         $this->record('boot_duration', $bootDuration);
         $this->record('start_time', $this->manager->getStartTime());
         $this->record('method', $request->method());
+        
+        $requestType = 'Page Load';
+        if ($request->ajax() || $request->wantsJson()) {
+            $requestType = 'AJAX / API';
+        }
+        $this->record('request_type', $requestType);
+        
         $this->record('url', $request->fullUrl());
         $this->record('ip', $request->ip());
         $this->record('headers', $this->formatHeaders($request->headers->all()));
