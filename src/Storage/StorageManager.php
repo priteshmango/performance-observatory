@@ -32,6 +32,7 @@ class StorageManager
             // For now, we will store the raw JSON payload in a single table for the MVP
             DB::connection($connection)->table('observatory_requests')->insert([
                 'request_id' => $data['request_id'],
+                'parent_request_id' => $data['metrics']['request']['parent_request_id'] ?? null,
                 'url' => $data['metrics']['request']['url'] ?? 'unknown',
                 'method' => $data['metrics']['request']['method'] ?? 'unknown',
                 'total_duration' => $data['total_duration'],

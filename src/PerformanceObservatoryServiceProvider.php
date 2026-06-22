@@ -40,7 +40,15 @@ class PerformanceObservatoryServiceProvider extends ServiceProvider
 
         // Boot the manager to start collecting if enabled
         if (config('observatory.enabled') && $this->shouldSample()) {
-            $this->app->make(ObservatoryManager::class)->boot();
+            $manager = $this->app->make(ObservatoryManager::class);
+            $manager->boot();
+
+            // Inject parent request ID into all outgoing HTTP client requests
+            if (class_exists(\Illuminate\Support\Facades\Http::class) && method_exists(\Illuminate\Support\Facades\Http::class, 'globalRequestMiddleware')) {
+                \Illuminate\Support\Facades\Http::globalRequestMiddleware(function (\Psr\Http\Message\RequestInterface $request) use ($manager) {
+                    return $request->withHeader('X-Observatory-Parent-Request-Id', $manager->getRequestId());
+                });
+            }
         }
     }
 

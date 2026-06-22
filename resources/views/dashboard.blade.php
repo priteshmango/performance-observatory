@@ -88,11 +88,22 @@
                         <template x-for="req in filteredRequests" :key="req.request_id">
                             <tr @click="openDetails(req.request_id)" class="border-b border-white/5 hover:bg-white/10 transition-colors group cursor-pointer">
                                 <td class="py-4 text-gray-400 whitespace-nowrap text-xs" x-text="new Date(req.created_at || req.timestamp).toLocaleString()"></td>
-                                <td class="py-4 font-mono text-gray-300 group-hover:text-white" x-text="req.url"></td>
+                                <td class="py-4 font-mono text-gray-300 group-hover:text-white">
+                                    <div x-text="req.url"></div>
+                                    <div x-show="req.parent_request_id" class="text-xs text-purple-400 flex items-center gap-1 mt-1 font-sans">
+                                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                        </svg>
+                                        <span>Internal call from</span>
+                                        <span class="underline font-mono text-purple-300" x-text="req.parent_method + ' ' + (req.parent_url ? req.parent_url.replace(/^https?:\/\/[^\/]+/, '') : 'parent')"></span>
+                                    </div>
+                                </td>
                                 <td class="py-4">
                                     <div class="flex items-center gap-2">
                                         <span class="px-2 py-1 bg-white/10 text-xs rounded-md text-gray-300" x-text="req.method"></span>
                                         <span x-show="req.request_type === 'AJAX / API'" class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-md border border-blue-500/30">AJAX</span>
+                                        <span x-show="req.parent_request_id" class="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded-md border border-purple-500/30">Internal</span>
+                                        <span x-show="!req.parent_request_id" class="px-2 py-1 bg-emerald-500/20 text-emerald-400 text-xs rounded-md border border-emerald-500/30">Direct</span>
                                     </div>
                                 </td>
                                 <td class="py-4 text-right">
@@ -248,6 +259,61 @@
                         </div>
                     </template>
 
+                    <!-- Trace Relationships Section -->
+                    <template x-if="requestDetails?.parent_request_id || (requestDetails?.children && requestDetails.children.length > 0)">
+                        <div class="mb-8">
+                            <h4 class="font-semibold text-white mb-4 border-b border-white/10 pb-2 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                </svg>
+                                Trace Relationships
+                            </h4>
+                            <div class="space-y-4">
+                                <!-- Parent Request -->
+                                <template x-if="requestDetails?.parent_request_id">
+                                    <div class="bg-purple-950/20 border border-purple-500/20 rounded-lg p-4 flex justify-between items-center">
+                                        <div>
+                                            <span class="text-xs text-purple-400 font-bold uppercase tracking-wider block mb-1">Parent Request (Caller)</span>
+                                            <div class="flex items-center gap-2">
+                                                <span class="px-2 py-0.5 bg-purple-500/20 text-purple-300 text-xs rounded font-mono" x-text="requestDetails.parent_method"></span>
+                                                <span class="font-mono text-sm break-all text-white" x-text="requestDetails.parent_url"></span>
+                                            </div>
+                                        </div>
+                                        <button @click="openDetails(requestDetails.parent_request_id)" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded transition-colors whitespace-nowrap">
+                                            View Parent
+                                        </button>
+                                    </div>
+                                </template>
+
+                                <!-- Child Requests (Sub-requests) -->
+                                <template x-if="requestDetails?.children && requestDetails.children.length > 0">
+                                    <div class="bg-blue-950/20 border border-blue-500/20 rounded-lg p-4">
+                                        <span class="text-xs text-blue-400 font-bold uppercase tracking-wider block mb-3">Internal API Sub-requests (Called by this page)</span>
+                                        <div class="space-y-2">
+                                            <template x-for="child in requestDetails.children" :key="child.request_id">
+                                                <div class="flex justify-between items-center bg-black/40 border border-white/5 rounded p-3 hover:border-white/10 transition-all">
+                                                    <div class="flex items-center gap-3 overflow-hidden">
+                                                        <span class="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-xs rounded font-mono" x-text="child.method"></span>
+                                                        <span class="font-mono text-sm truncate text-gray-300" x-text="child.url"></span>
+                                                    </div>
+                                                    <div class="flex items-center gap-4 ml-4">
+                                                        <span class="px-2 py-0.5 rounded text-xs font-medium" 
+                                                              :class="child.status >= 500 ? 'bg-red-500/20 text-red-400' : (child.status >= 400 ? 'bg-orange-500/20 text-orange-400' : 'bg-green-500/20 text-green-400')"
+                                                              x-text="child.status"></span>
+                                                        <span class="text-orange-400 font-mono text-sm whitespace-nowrap" x-text="Math.round(child.total_duration * 1000) + 'ms'"></span>
+                                                        <button @click="openDetails(child.request_id)" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded transition-colors whitespace-nowrap">
+                                                            Inspect
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
                     <h4 class="font-semibold text-white mb-4 border-b border-white/10 pb-2">Request Overview</h4>
                     <div class="grid grid-cols-2 gap-6 mb-8">
                         <div class="bg-black/50 rounded-lg p-4 border border-white/5">
@@ -314,6 +380,43 @@
                                 </div>
                             </template>
                             <div x-show="!requestDetails?.metrics?.database?.queries?.length" class="text-gray-500">No database queries executed.</div>
+                        </div>
+                    </div>
+
+                    <h4 class="font-semibold text-white mb-4 border-b border-white/10 pb-2">Outgoing API & HTTP Calls</h4>
+                    <div class="bg-black/50 rounded-lg border border-white/5 overflow-hidden mb-8">
+                        <div class="p-4 flex gap-8 bg-white/5 border-b border-white/5">
+                            <div>
+                                <span class="text-sm text-gray-400">Total API Requests:</span>
+                                <span class="ml-2 font-bold text-white" x-text="requestDetails?.metrics?.api?.total_queries || 0"></span>
+                            </div>
+                            <div>
+                                <span class="text-sm text-gray-400">Total Time:</span>
+                                <span class="ml-2 font-bold text-orange-400" x-text="Math.round(requestDetails?.metrics?.api?.total_time || 0) + 'ms'"></span>
+                            </div>
+                        </div>
+                        <div class="p-4 max-h-64 overflow-y-auto font-mono text-xs text-blue-300 space-y-3">
+                            <template x-for="(apiCall, idx) in (requestDetails?.metrics?.api?.requests || [])">
+                                <div class="border-b border-white/5 pb-2 flex justify-between items-start">
+                                    <div class="overflow-hidden mr-4">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="px-1.5 py-0.5 bg-white/10 text-[10px] rounded text-gray-300 font-mono" x-text="apiCall.method"></span>
+                                            <span class="font-semibold text-gray-200 break-all" x-text="apiCall.url"></span>
+                                        </div>
+                                        <div class="text-[10px] text-gray-500">
+                                            <span x-show="apiCall.is_internal" class="text-purple-400 font-sans">Internal Call</span>
+                                            <span x-show="!apiCall.is_internal" class="text-gray-400 font-sans">External Call</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-3 whitespace-nowrap">
+                                        <span class="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                              :class="apiCall.status === 'failed' || apiCall.status >= 500 ? 'bg-red-500/20 text-red-400' : (apiCall.status >= 400 ? 'bg-orange-500/20 text-orange-400' : 'bg-green-500/20 text-green-400')"
+                                              x-text="apiCall.status"></span>
+                                        <span class="text-orange-400 font-bold" x-text="Math.round(apiCall.duration) + 'ms'"></span>
+                                    </div>
+                                </div>
+                            </template>
+                            <div x-show="!requestDetails?.metrics?.api?.requests?.length" class="text-gray-500">No outgoing HTTP/API calls made by this request.</div>
                         </div>
                     </div>
 

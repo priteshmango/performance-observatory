@@ -35,6 +35,11 @@ class RequestCollector extends AbstractCollector
         $this->record('headers', $this->formatHeaders($request->headers->all()));
         $this->record('payload_size', strlen($request->getContent()));
 
+        $parentRequestId = $request->header('X-Observatory-Parent-Request-Id');
+        if ($parentRequestId) {
+            $this->record('parent_request_id', $parentRequestId);
+        }
+
         // Listen for the response to get final metrics
         $this->app['events']->listen('kernel.handled', function ($event) {
             $this->onHandled($event->request, $event->response);

@@ -13,8 +13,10 @@ class ObservatoryController extends Controller
         $connection = config('observatory.storage.connection');
         
         $requests = DB::connection($connection)
-            ->table('observatory_requests')
-            ->orderBy('created_at', 'desc')
+            ->table('observatory_requests as r')
+            ->leftJoin('observatory_requests as p', 'r.parent_request_id', '=', 'p.request_id')
+            ->select('r.*', 'p.url as parent_url', 'p.method as parent_method')
+            ->orderBy('r.created_at', 'desc')
             ->paginate(50);
             
         // Process metrics payload to return summarized data for the dashboard list
@@ -35,8 +37,10 @@ class ObservatoryController extends Controller
         $connection = config('observatory.storage.connection');
         
         $request = DB::connection($connection)
-            ->table('observatory_requests')
-            ->where('request_id', $id)
+            ->table('observatory_requests as r')
+            ->leftJoin('observatory_requests as p', 'r.parent_request_id', '=', 'p.request_id')
+            ->select('r.*', 'p.url as parent_url', 'p.method as parent_method')
+            ->where('r.request_id', $id)
             ->first();
 
         if (!$request) {
@@ -45,6 +49,19 @@ class ObservatoryController extends Controller
 
         $request->metrics = json_decode($request->metrics_payload, true);
         unset($request->metrics_payload);
+
+        // Fetch children requests initiated by this request
+        $request->children = DB::connection($connection)
+            ->table('observatory_requests')
+            ->where('parent_request_id', $id)
+            ->select('request_id', 'url', 'method', 'total_duration', 'created_at', 'metrics_payload')
+            ->get()
+            ->map(function ($child) {
+                $metrics = json_decode($child->metrics_payload, true);
+                $child->status = $metrics['request']['status'] ?? 200;
+                unset($child->metrics_payload);
+                return $child;
+            });
 
         // Generate actionable insights dynamically
         $engine = new \Performance\Observatory\Engines\RootCauseEngine();

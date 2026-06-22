@@ -16,6 +16,7 @@ return new class extends Migration
         Schema::connection($connection)->create('observatory_requests', function (Blueprint $table) {
             $table->id();
             $table->uuid('request_id')->unique();
+            $table->uuid('parent_request_id')->nullable()->index();
             $table->string('url')->index();
             $table->string('method', 10);
             $table->float('total_duration')->index();
