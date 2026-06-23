@@ -213,7 +213,7 @@ class StaticAnalysisEngine
                     'severity' => 'warning',
                     'title' => "Missing Indexes on Table: {$tbl['table']}",
                     'description' => "The database table '{$tbl['table']}' has grown large ({$tbl['rows']} rows) but is missing indexes (except possibly the primary key). Queries searching this table will run table scans.",
-                    'solution' => "Create a database migration to add indexes to columns frequently used in WHERE or JOIN clauses. E.g., `$table->index('column_name');`"
+                    'solution' => 'Create a database migration to add indexes to columns frequently used in WHERE or JOIN clauses. E.g., $table->index(\'column_name\');'
                 ];
             }
         }

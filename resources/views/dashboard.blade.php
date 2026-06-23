@@ -477,7 +477,7 @@
                     }, 5000);
                 },
                 fetchData() {
-                    fetch('/{{ config("observatory.route_prefix", "observatory") }}/api/requests')
+                    fetch('{{ preg_replace("/^https?:/", "", url(config("observatory.route_prefix", "observatory") . "/api/requests")) }}')
                         .then(res => res.json())
                         .then(data => {
                             this.requests = data.data;
@@ -493,7 +493,7 @@
                     this.loadingDetails = true;
                     this.requestDetails = null;
                     
-                    fetch('/{{ config("observatory.route_prefix", "observatory") }}/api/requests/' + id)
+                    fetch('{{ preg_replace("/^https?:/", "", url(config("observatory.route_prefix", "observatory") . "/api/requests")) }}/' + id)
                         .then(res => res.json())
                         .then(data => {
                             this.requestDetails = data;
@@ -508,7 +508,7 @@
                     this.scanning = true;
                     this.scanResults[type] = [];
                     
-                    fetch('/{{ config("observatory.route_prefix", "observatory") }}/api/scan/' + type)
+                    fetch('{{ preg_replace("/^https?:/", "", url(config("observatory.route_prefix", "observatory") . "/api/scan")) }}/' + type)
                         .then(res => {
                             if (!res.ok) throw new Error('Network response was not ok');
                             return res.json();
