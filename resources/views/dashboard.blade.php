@@ -166,7 +166,7 @@
                             <h5 class="font-semibold text-white text-md mb-1" x-text="vuln.title"></h5>
                             <p class="text-sm text-gray-300 mb-3" x-text="vuln.description"></p>
                             
-                            <div class="bg-black/30 rounded px-3 py-2 border border-white/5">
+                            <div x-show="vuln.solution" class="bg-black/30 rounded px-3 py-2 border border-white/5">
                                 <span class="text-xs font-bold uppercase tracking-wider block mb-1"
                                       :class="{
                                           'text-red-300': vuln.severity === 'critical',
@@ -477,7 +477,7 @@
                     }, 5000);
                 },
                 fetchData() {
-                    fetch('{{ url(config("observatory.route_prefix") . "/api/requests") }}')
+                    fetch('/{{ config("observatory.route_prefix", "observatory") }}/api/requests')
                         .then(res => res.json())
                         .then(data => {
                             this.requests = data.data;
@@ -493,7 +493,7 @@
                     this.loadingDetails = true;
                     this.requestDetails = null;
                     
-                    fetch('{{ url(config("observatory.route_prefix") . "/api/requests") }}/' + id)
+                    fetch('/{{ config("observatory.route_prefix", "observatory") }}/api/requests/' + id)
                         .then(res => res.json())
                         .then(data => {
                             this.requestDetails = data;
@@ -508,7 +508,7 @@
                     this.scanning = true;
                     this.scanResults[type] = [];
                     
-                    fetch('{{ url(config("observatory.route_prefix") . "/api/scan") }}/' + type)
+                    fetch('/{{ config("observatory.route_prefix", "observatory") }}/api/scan/' + type)
                         .then(res => {
                             if (!res.ok) throw new Error('Network response was not ok');
                             return res.json();

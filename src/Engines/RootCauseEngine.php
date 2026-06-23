@@ -20,11 +20,11 @@ class RootCauseEngine
         }
 
         // 2. Database Analysis
-        if (isset($metrics['database'])) {
+        if (isset($metrics['database']) && is_array($metrics['database'])) {
             $db = $metrics['database'];
             
             // N+1 Query Detection (Duplicate Queries)
-            if (!empty($db['queries'])) {
+            if (!empty($db['queries']) && is_array($db['queries'])) {
                 $queryCounts = array_count_values(array_column($db['queries'], 'sql'));
                 foreach ($queryCounts as $sql => $count) {
                     if ($count > 3) {
@@ -40,9 +40,9 @@ class RootCauseEngine
             }
 
             // Slow Queries
-            if (!empty($db['queries'])) {
+            if (!empty($db['queries']) && is_array($db['queries'])) {
                 foreach ($db['queries'] as $query) {
-                    if ($query['time'] > 100) {
+                    if (isset($query['time']) && $query['time'] > 100) {
                         $insights[] = [
                             'type' => 'critical',
                             'title' => 'Slow Database Query',
@@ -54,11 +54,12 @@ class RootCauseEngine
                 }
             }
 
-            if ($db['total_queries'] > 30 && ($metrics['cache']['hits'] ?? 0) === 0) {
+            $totalQueries = $db['total_queries'] ?? 0;
+            if ($totalQueries > 30 && ($metrics['cache']['hits'] ?? 0) === 0) {
                 $insights[] = [
                     'type' => 'warning',
                     'title' => 'High DB Load & No Cache',
-                    'description' => "Executed {$db['total_queries']} queries but no cache hits were recorded.",
+                    'description' => "Executed {$totalQueries} queries but no cache hits were recorded.",
                     'solution' => 'Implement Redis or Memcached using `Cache::remember()` for frequently accessed data that rarely changes.'
                 ];
             }

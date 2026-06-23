@@ -9,95 +9,145 @@ class StaticAnalysisEngine
 {
     public function scanServer(): array
     {
-        $vulnerabilities = [];
+        $checks = [];
 
-        // Debug Mode Check (Production Risk)
+        // 1. Debug Mode Check
         if (config('app.debug')) {
-            $vulnerabilities[] = [
+            $checks[] = [
                 'severity' => 'critical',
-                'title' => 'Debug Mode Enabled in Production',
-                'description' => 'Your application has APP_DEBUG=true. This is a severe security vulnerability (exposing env variables and database details on errors) and a major performance killer, as Laravel has to collect extra telemetry on every request.',
-                'solution' => 'Change `APP_DEBUG=true` to `APP_DEBUG=false` in your production .env file immediately.'
+                'title' => 'Laravel Debug Mode',
+                'description' => 'Debug mode is ENABLED (APP_DEBUG=true). This exposes sensitive environment credentials, database passwords, and telemetry data. It also significantly slows down response times.',
+                'solution' => 'Change `APP_DEBUG=true` to `APP_DEBUG=false` in your production .env file.'
+            ];
+        } else {
+            $checks[] = [
+                'severity' => 'success',
+                'title' => 'Laravel Debug Mode',
+                'description' => 'Debug mode is DISABLED (Safe for production).',
+                'solution' => ''
             ];
         }
 
-        // OPcache Check
+        // 2. OPcache Check
         if (!function_exists('opcache_get_status') || !opcache_get_status()) {
-            $vulnerabilities[] = [
+            $checks[] = [
                 'severity' => 'critical',
-                'title' => 'Missing OPcache (Huge Speed Loss)',
-                'description' => 'Your server is currently recompiling your PHP code on every single page load. This is a massive waste of server resources and slows down your website tremendously.',
-                'solution' => 'Please ask your hosting provider or server admin to "Enable PHP OPcache". This one change will instantly double the speed of your application.'
+                'title' => 'PHP OPcache Caching',
+                'description' => 'OPcache is DISABLED or not working on CLI. Your server is recompiling your PHP scripts on every single request, causing high CPU load and slow execution.',
+                'solution' => 'Enable OPcache by setting `opcache.enable=1` and `opcache.enable_cli=1` in your php.ini configuration.'
+            ];
+        } else {
+            $status = opcache_get_status(false);
+            $cachedFiles = is_array($status) && isset($status['scripts']) ? count($status['scripts']) : 0;
+            $checks[] = [
+                'severity' => 'success',
+                'title' => 'PHP OPcache Caching',
+                'description' => 'OPcache is ENABLED and caching compiled PHP bytecode (' . ($cachedFiles ?: 'active') . ' scripts currently cached).',
+                'solution' => ''
             ];
         }
 
-        // Synchronous Queue Check (Blocks user requests)
-        if (config('queue.default') === 'sync') {
-            $vulnerabilities[] = [
+        // 3. Queue Driver Check
+        $queueDriver = config('queue.default');
+        if ($queueDriver === 'sync') {
+            $checks[] = [
                 'severity' => 'warning',
-                'title' => 'Synchronous Queue Driver Active',
-                'description' => 'Your application is using the "sync" queue driver. This means background jobs (like sending emails, processing uploads, or sending webhooks) are run during the request, making your users wait for them to finish.',
+                'title' => 'Asynchronous Queue System',
+                'description' => 'The default queue connection is set to `sync`. Background jobs (such as emails, notifications, and webhooks) are run during the request, forcing your users to wait.',
                 'solution' => 'Configure a production-ready queue driver like `redis` or `database` by setting `QUEUE_CONNECTION=redis` in your .env file, and run queue workers.'
             ];
-        }
-
-        // Config & Route Caching
-        if (!app()->routesAreCached()) {
-            $vulnerabilities[] = [
-                'severity' => 'warning',
-                'title' => 'Uncached Routes (Slow Page Loads)',
-                'description' => 'Laravel is having to read and register all of your website\'s URLs dynamically every time someone visits a page. This causes a noticeable delay.',
-                'solution' => 'Open your terminal/command prompt and run this exact command: `php artisan route:cache`. This bundles your routes into a fast file.'
-            ];
-        }
-        
-        if (!app()->configurationIsCached()) {
-            $vulnerabilities[] = [
-                'severity' => 'warning',
-                'title' => 'Uncached Configuration Files',
-                'description' => 'Your application is reading raw configuration files from the disk continuously. This disk reading slows down your server response times.',
-                'solution' => 'Open your terminal and run: `php artisan config:cache`. This combines all config settings into a lightning-fast memory cache.'
-            ];
-        }
-
-        if (empty($vulnerabilities)) {
-            $vulnerabilities[] = [
+        } else {
+            $checks[] = [
                 'severity' => 'success',
-                'title' => 'Server is Highly Optimized',
-                'description' => 'Your server configuration is excellent. All caching mechanisms are active.',
-                'solution' => 'Great job! Your server foundation is rock solid.'
+                'title' => 'Asynchronous Queue System',
+                'description' => "Queue connection is configured to run asynchronously using the `{$queueDriver}` driver.",
+                'solution' => ''
             ];
         }
 
-        return $vulnerabilities;
+        // 4. Route Caching Check
+        if (app()->routesAreCached()) {
+            $checks[] = [
+                'severity' => 'success',
+                'title' => 'Route Cache Optimization',
+                'description' => 'Application routes are cached and compiled, resulting in faster URL matching.',
+                'solution' => ''
+            ];
+        } else {
+            $checks[] = [
+                'severity' => 'warning',
+                'title' => 'Route Cache Optimization',
+                'description' => 'Routes are not cached. Laravel must parse and register all routes on every single request page load.',
+                'solution' => 'Run `php artisan route:cache` on your production server.'
+            ];
+        }
+
+        // 5. Configuration Caching Check
+        if (app()->configurationIsCached()) {
+            $checks[] = [
+                'severity' => 'success',
+                'title' => 'Configuration Cache Optimization',
+                'description' => 'Configuration files are cached and compiled into a single file.',
+                'solution' => ''
+            ];
+        } else {
+            $checks[] = [
+                'severity' => 'warning',
+                'title' => 'Configuration Cache Optimization',
+                'description' => 'Configuration files are uncached. The application reads raw files from the disk continuously.',
+                'solution' => 'Run `php artisan config:cache` on your production server.'
+            ];
+        }
+
+        return $checks;
     }
 
     public function scanDatabase(): array
     {
-        $vulnerabilities = [];
+        $checks = [];
         $connection = DB::connection();
         $driver = $connection->getDriverName();
 
-        // Check for Database Cache Driver (Performance Killer)
-        if (config('cache.default') === 'database') {
-            $vulnerabilities[] = [
+        // 1. Cache Driver Check
+        $cacheDriver = config('cache.default');
+        if ($cacheDriver === 'database') {
+            $checks[] = [
                 'severity' => 'critical',
-                'title' => 'Database Cache Driver in Use (Severe Bottleneck)',
-                'description' => 'You are using your relational database to store cache data. This causes massive locking issues and turns fast cache lookups into 700ms+ slow queries during heavy traffic.',
-                'solution' => 'Change `CACHE_DRIVER=database` to `CACHE_DRIVER=redis` or `memcached` in your .env file immediately.'
+                'title' => 'Fast Caching System',
+                'description' => 'You are using your relational database (`database`) to store cache data. This causes row locking issues and turns cache reads/writes into heavy database queries during traffic spikes.',
+                'solution' => 'Change `CACHE_DRIVER=database` to `CACHE_DRIVER=redis` or `memcached` in your .env file.'
+            ];
+        } else {
+            $checks[] = [
+                'severity' => 'success',
+                'title' => 'Fast Caching System',
+                'description' => "Cache system is configured to use the high-performance `{$cacheDriver}` driver.",
+                'solution' => ''
             ];
         }
 
-        // Check for Database Session Driver
-        if (config('session.driver') === 'database') {
-            $vulnerabilities[] = [
-                'severity' => 'high',
-                'title' => 'Database Session Driver',
-                'description' => 'You are storing user sessions in the database. Every single page click forces a database write, crippling performance.',
+        // 2. Session Driver Check
+        $sessionDriver = config('session.driver');
+        if ($sessionDriver === 'database') {
+            $checks[] = [
+                'severity' => 'warning',
+                'title' => 'Session Storage Driver',
+                'description' => 'You are storing user session state in the database. Every single page load or API request forces a database write, creating unnecessary database load.',
                 'solution' => 'Change `SESSION_DRIVER=database` to `SESSION_DRIVER=redis` or `cookie` in your .env file.'
             ];
+        } else {
+            $checks[] = [
+                'severity' => 'success',
+                'title' => 'Session Storage Driver',
+                'description' => "Session storage is configured to use the `{$sessionDriver}` driver.",
+                'solution' => ''
+            ];
         }
 
+        // 3. Database Table Indexes Check
+        $indexedTablesPassed = true;
+        $unindexedTables = [];
+        
         if ($driver === 'mysql') {
             try {
                 $tables = DB::select("
@@ -110,11 +160,10 @@ class StaticAnalysisEngine
                 foreach ($tables as $table) {
                     $indexes = DB::select("SHOW INDEX FROM `{$table->TABLE_NAME}`");
                     if (count($indexes) <= 1) { 
-                        $vulnerabilities[] = [
-                            'severity' => 'warning',
-                            'title' => "Dangerous Database Table: {$table->TABLE_NAME}",
-                            'description' => "The database table '{$table->TABLE_NAME}' has grown very large, but it is missing 'Indexes'. Without indexes, the database has to scan every single row one-by-one to find data.",
-                            'solution' => "Please create a database migration and add an index to the columns you frequently search by. Example code: `$table->index('user_id');`"
+                        $indexedTablesPassed = false;
+                        $unindexedTables[] = [
+                            'table' => $table->TABLE_NAME,
+                            'rows' => $table->TABLE_ROWS
                         ];
                     }
                 }
@@ -139,11 +188,10 @@ class StaticAnalysisEngine
                     $indexCount = $indexCountResult ? (int) $indexCountResult->count : 0;
 
                     if ($indexCount <= 1) { 
-                        $vulnerabilities[] = [
-                            'severity' => 'warning',
-                            'title' => "Dangerous Database Table: {$table->table_name}",
-                            'description' => "The database table '{$table->table_name}' has grown very large, but it has only {$indexCount} index(es) (likely just the primary key). Without indexes on searched columns, queries will scan the entire table.",
-                            'solution' => "Please create a database migration and add an index to columns frequently used in WHERE, JOIN, or ORDER BY clauses."
+                        $indexedTablesPassed = false;
+                        $unindexedTables[] = [
+                            'table' => $table->table_name,
+                            'rows' => $table->table_rows
                         ];
                     }
                 }
@@ -152,21 +200,30 @@ class StaticAnalysisEngine
             }
         }
 
-        if (empty($vulnerabilities)) {
-            $vulnerabilities[] = [
+        if ($indexedTablesPassed) {
+            $checks[] = [
                 'severity' => 'success',
-                'title' => 'Database is Optimized',
-                'description' => 'We did not find any dangerously large un-indexed tables or bad configuration drivers.',
-                'solution' => 'No database structure changes are needed right now.'
+                'title' => 'Database Table Indexing',
+                'description' => 'All scanned tables have proper indexes configured (no large tables are missing indexes).',
+                'solution' => ''
             ];
+        } else {
+            foreach ($unindexedTables as $tbl) {
+                $checks[] = [
+                    'severity' => 'warning',
+                    'title' => "Missing Indexes on Table: {$tbl['table']}",
+                    'description' => "The database table '{$tbl['table']}' has grown large ({$tbl['rows']} rows) but is missing indexes (except possibly the primary key). Queries searching this table will run table scans.",
+                    'solution' => "Create a database migration to add indexes to columns frequently used in WHERE or JOIN clauses. E.g., `$table->index('column_name');`"
+                ];
+            }
         }
 
-        return $vulnerabilities;
+        return $checks;
     }
 
     public function scanBackend(): array
     {
-        $vulnerabilities = [];
+        $checks = [];
         $appPath = app_path();
 
         if (!File::exists($appPath)) {
@@ -174,10 +231,11 @@ class StaticAnalysisEngine
         }
 
         $files = File::allFiles($appPath);
+        $directEnvCalls = [];
+        $loopsWithQueries = [];
         
         foreach ($files as $file) {
             if ($file->getExtension() === 'php') {
-                // Skip very large files (e.g. autogenerated stubs, libraries) to prevent timeouts
                 if ($file->getSize() > 100 * 1024) {
                     continue;
                 }
@@ -191,7 +249,6 @@ class StaticAnalysisEngine
                     $actualLine = $lineNumber + 1;
                     $trimmedLine = trim($line);
 
-                    // Skip comment lines to avoid false positives
                     if (str_starts_with($trimmedLine, '//') || 
                         str_starts_with($trimmedLine, '#') || 
                         str_starts_with($trimmedLine, '*') || 
@@ -200,19 +257,16 @@ class StaticAnalysisEngine
                         continue;
                     }
 
-                    // Bad Practice 1: env() helper outside of config
+                    // Direct env() calls
                     if (preg_match('/\benv\(/', $line)) {
-                        $vulnerabilities[] = [
-                            'severity' => 'critical',
-                            'title' => 'Fatal Error Risk: env() helper used directly',
-                            'description' => "We found the `env()` function being used inside your code here: `{$file->getRelativePathname()}` on Line {$actualLine}. If you optimize your server, this function will start returning NULL and break your live site.",
-                            'solution' => 'Please open that file, go to line ' . $actualLine . ', and replace the `env("SOMETHING")` call with `config("app.something")`. Then put the env call inside your config/app.php file.'
+                        $directEnvCalls[] = [
+                            'file' => $file->getRelativePathname(),
+                            'line' => $actualLine
                         ];
                     }
 
-                    // Bad Practice 2: Queries / writes in loops
+                    // DB queries in loops
                     if (preg_match('/(->save\(|->update\(|->delete\(|::create\(|::updateOrCreate\(|::firstOrCreate\(|DB::table\(|DB::insert\(|DB::update\()/', $line)) {
-                        // Context check: check the previous 10 lines for loops
                         $hasLoop = false;
                         for ($i = max(0, $lineNumber - 10); $i < $lineNumber; $i++) {
                             if (strpos($lines[$i], 'foreach') !== false || strpos($lines[$i], 'while') !== false || strpos($lines[$i], 'for (') !== false) {
@@ -222,11 +276,9 @@ class StaticAnalysisEngine
                         }
                         
                         if ($hasLoop) {
-                            $vulnerabilities[] = [
-                                'severity' => 'high',
-                                'title' => 'Website Freezing Loop Detected',
-                                'description' => "We detected database writing near a loop in this file: `{$file->getRelativePathname()}` around Line {$actualLine}. This means if you have 100 items, it makes 100 separate database connections.",
-                                'solution' => 'Please refactor this code. Instead of saving inside the loop, prepare an array of data and use Laravel\'s bulk `insert()` or `upsert()` method outside the loop.'
+                            $loopsWithQueries[] = [
+                                'file' => $file->getRelativePathname(),
+                                'line' => $actualLine
                             ];
                         }
                     }
@@ -234,21 +286,50 @@ class StaticAnalysisEngine
             }
         }
 
-        if (empty($vulnerabilities)) {
-            $vulnerabilities[] = [
+        // Add Check: Direct env() calls
+        if (empty($directEnvCalls)) {
+            $checks[] = [
                 'severity' => 'success',
-                'title' => 'Backend Code is Clean',
-                'description' => 'We did not find any major performance-killing coding mistakes.',
-                'solution' => 'Your Laravel PHP code follows good performance standards.'
+                'title' => 'Safe Environment Helper Usage',
+                'description' => 'No direct env() function helper calls were found outside configuration files.',
+                'solution' => ''
             ];
+        } else {
+            foreach ($directEnvCalls as $call) {
+                $checks[] = [
+                    'severity' => 'critical',
+                    'title' => "Direct env() Call: {$call['file']}",
+                    'description' => "Found `env()` helper function call on Line {$call['line']}. In cached production mode, this will return NULL and cause errors.",
+                    'solution' => "Replace `env('KEY')` with `config('file.key')` and place the `env()` call inside your config files."
+                ];
+            }
         }
 
-        return $vulnerabilities;
+        // Add Check: Database loops
+        if (empty($loopsWithQueries)) {
+            $checks[] = [
+                'severity' => 'success',
+                'title' => 'No Database Queries in Loops',
+                'description' => 'No database inserts, updates, or query operations were detected inside loops.',
+                'solution' => ''
+            ];
+        } else {
+            foreach ($loopsWithQueries as $loop) {
+                $checks[] = [
+                    'severity' => 'warning',
+                    'title' => "Database Operation in Loop: {$loop['file']}",
+                    'description' => "Database write or query operation detected inside or near a loop on Line {$loop['line']}. This causes a massive performance bottleneck.",
+                    'solution' => 'Refactor the loop to collect data in memory first, then execute a bulk database operation (like insert() or upsert()) outside the loop.'
+                ];
+            }
+        }
+
+        return $checks;
     }
 
     public function scanFrontend(): array
     {
-        $vulnerabilities = [];
+        $checks = [];
         
         $potentialPaths = [
             public_path('build/assets'),
@@ -259,6 +340,9 @@ class StaticAnalysisEngine
         ];
 
         $assetsFound = false;
+        $largeJsFiles = [];
+        $largeCssFiles = [];
+        $largeImages = [];
         
         foreach ($potentialPaths as $publicPath) {
             if (File::exists($publicPath)) {
@@ -270,57 +354,104 @@ class StaticAnalysisEngine
                 foreach ($files as $file) {
                     $sizeInKb = $file->getSize() / 1024;
                     
-                    // JS File check (> 500KB)
                     if ($file->getExtension() === 'js' && $sizeInKb > 500) {
-                        $vulnerabilities[] = [
-                            'severity' => 'high',
-                            'title' => "Massive Javascript File: {$file->getFilename()} (Slow Mobile Load)",
-                            'description' => "The file `{$file->getFilename()}` is very large (" . round($sizeInKb) . "KB). Users on 3G or weak mobile connections will experience long delays.",
-                            'solution' => 'Please configure your Vite/Webpack to "Code Split" this file into smaller chunks, or remove heavy libraries you are no longer using.'
+                        $largeJsFiles[] = [
+                            'name' => $file->getFilename(),
+                            'size' => $sizeInKb
                         ];
                     }
                     
-                    // CSS File check (> 250KB)
                     if ($file->getExtension() === 'css' && $sizeInKb > 250) {
-                        $vulnerabilities[] = [
-                            'severity' => 'warning',
-                            'title' => "Bloated CSS File: {$file->getFilename()} (Blocks Rendering)",
-                            'description' => "The stylesheet `{$file->getFilename()}` is very large (" . round($sizeInKb) . "KB) and delays page rendering as it is render-blocking.",
-                            'solution' => 'Minify the CSS, purge unused CSS rules using tools like PurgeCSS, or split styles by page route.'
+                        $largeCssFiles[] = [
+                            'name' => $file->getFilename(),
+                            'size' => $sizeInKb
                         ];
                     }
                     
-                    // Image check (> 1MB)
                     if (in_array($file->getExtension(), ['jpg', 'png', 'jpeg']) && $sizeInKb > 1000) {
-                        $vulnerabilities[] = [
-                            'severity' => 'warning',
-                            'title' => "Giant Unoptimized Image: {$file->getFilename()}",
-                            'description' => "The image `{$file->getFilename()}` is heavily bloated (" . round($sizeInKb / 1024, 2) . "MB) and hurts page load speed.",
-                            'solution' => 'Compress the image using TinyPNG or similar tools, resize it to display size, or convert it to a modern format like WebP/AVIF.'
+                        $largeImages[] = [
+                            'name' => $file->getFilename(),
+                            'size' => $sizeInKb
                         ];
                     }
                 }
             }
         }
 
-        if (!$assetsFound) {
-             $vulnerabilities[] = [
-                'severity' => 'warning',
-                'title' => 'Missing Compiled Assets',
-                'description' => 'We could not find production Javascript/CSS assets in common asset folders.',
-                'solution' => 'Run `npm run build` in your project terminal to generate production-ready assets.'
-            ];
-        }
-
-        if (empty($vulnerabilities)) {
-            $vulnerabilities[] = [
+        // 1. Assets Compiled Check
+        if ($assetsFound) {
+            $checks[] = [
                 'severity' => 'success',
-                'title' => 'Frontend is Blazing Fast',
-                'description' => 'Your images and asset files are perfectly sized and compressed.',
-                'solution' => 'Your website is ready to deliver a fast experience to end users.'
+                'title' => 'Production Assets Status',
+                'description' => 'Compiled CSS/JS production assets were successfully located in public assets folders.',
+                'solution' => ''
+            ];
+        } else {
+            $checks[] = [
+                'severity' => 'warning',
+                'title' => 'Production Assets Status',
+                'description' => 'Could not find compiled production Javascript/CSS assets in common asset folders.',
+                'solution' => 'Run `npm run build` in your project terminal to generate production assets.'
             ];
         }
 
-        return $vulnerabilities;
+        // 2. Javascript Size Check
+        if (empty($largeJsFiles)) {
+            $checks[] = [
+                'severity' => 'success',
+                'title' => 'Javascript Bundle Sizes',
+                'description' => 'All frontend Javascript bundles are optimally sized (under 500KB).',
+                'solution' => ''
+            ];
+        } else {
+            foreach ($largeJsFiles as $js) {
+                $checks[] = [
+                    'severity' => 'warning',
+                    'title' => "Large JS Asset: {$js['name']}",
+                    'description' => "The Javascript file size is " . round($js['size']) . "KB (exceeds recommended 500KB threshold). This can slow down initial page loads on mobile.",
+                    'solution' => 'Enable code-splitting, dynamic imports, or remove unused libraries in your Vite/Webpack config.'
+                ];
+            }
+        }
+
+        // 3. CSS Size Check
+        if (empty($largeCssFiles)) {
+            $checks[] = [
+                'severity' => 'success',
+                'title' => 'CSS Bundle Sizes',
+                'description' => 'All stylesheets are optimally sized (under 250KB).',
+                'solution' => ''
+            ];
+        } else {
+            foreach ($largeCssFiles as $css) {
+                $checks[] = [
+                    'severity' => 'warning',
+                    'title' => "Large CSS Asset: {$css['name']}",
+                    'description' => "The stylesheet size is " . round($css['size']) . "KB (exceeds recommended 250KB threshold). Large CSS files block rendering.",
+                    'solution' => 'Purge unused CSS rules using PurgeCSS/Tailwind configuration, or separate styles by page route.'
+                ];
+            }
+        }
+
+        // 4. Image size check
+        if (empty($largeImages)) {
+            $checks[] = [
+                'severity' => 'success',
+                'title' => 'Image Asset Optimization',
+                'description' => 'All checked public image assets are optimized (under 1MB).',
+                'solution' => ''
+            ];
+        } else {
+            foreach ($largeImages as $img) {
+                $checks[] = [
+                    'severity' => 'warning',
+                    'title' => "Giant Image Asset: {$img['name']}",
+                    'description' => "The image file size is " . round($img['size'] / 1024, 2) . "MB (exceeds recommended 1MB threshold).",
+                    'solution' => 'Compress the image (e.g. TinyPNG), resize it, or convert it to a modern format like WebP/AVIF.'
+                ];
+            }
+        }
+
+        return $checks;
     }
 }

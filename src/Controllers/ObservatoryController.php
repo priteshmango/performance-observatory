@@ -22,6 +22,7 @@ class ObservatoryController extends Controller
         // Process metrics payload to return summarized data for the dashboard list
         $requests->getCollection()->transform(function ($item) {
             $metrics = json_decode($item->metrics_payload, true);
+            $metrics = is_array($metrics) ? $metrics : [];
             $item->status = $metrics['request']['status'] ?? 200;
             $item->db_time = $metrics['database']['total_time'] ?? 0;
             $item->db_queries = $metrics['database']['total_queries'] ?? 0;
@@ -47,7 +48,8 @@ class ObservatoryController extends Controller
             return response()->json(['message' => 'Not found'], 404);
         }
 
-        $request->metrics = json_decode($request->metrics_payload, true);
+        $metrics = json_decode($request->metrics_payload, true);
+        $request->metrics = is_array($metrics) ? $metrics : [];
         unset($request->metrics_payload);
 
         // Fetch children requests initiated by this request
@@ -58,6 +60,7 @@ class ObservatoryController extends Controller
             ->get()
             ->map(function ($child) {
                 $metrics = json_decode($child->metrics_payload, true);
+                $metrics = is_array($metrics) ? $metrics : [];
                 $child->status = $metrics['request']['status'] ?? 200;
                 unset($child->metrics_payload);
                 return $child;
