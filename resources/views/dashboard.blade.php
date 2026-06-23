@@ -332,6 +332,26 @@
                         </div>
                     </div>
 
+                    <h4 class="font-semibold text-white mb-4 border-b border-white/10 pb-2">Resource Usage</h4>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                        <div class="bg-black/50 rounded-lg p-4 border border-white/5">
+                            <p class="text-xs text-gray-500 uppercase tracking-wider mb-1">Peak Memory</p>
+                            <p class="text-lg font-bold text-blue-400" x-text="requestDetails?.metrics?.memory?.peak_memory ? (requestDetails.metrics.memory.peak_memory / 1024 / 1024).toFixed(2) + ' MB' : 'N/A'"></p>
+                        </div>
+                        <div class="bg-black/50 rounded-lg p-4 border border-white/5">
+                            <p class="text-xs text-gray-500 uppercase tracking-wider mb-1">Memory Allocation</p>
+                            <p class="text-lg font-bold text-gray-300" x-text="requestDetails?.metrics?.memory?.start_memory ? ((requestDetails.metrics.memory.end_memory - requestDetails.metrics.memory.start_memory) / 1024 / 1024).toFixed(2) + ' MB' : 'N/A'"></p>
+                        </div>
+                        <div class="bg-black/50 rounded-lg p-4 border border-white/5">
+                            <p class="text-xs text-gray-500 uppercase tracking-wider mb-1">PHP CPU Time</p>
+                            <p class="text-lg font-bold text-emerald-400" x-text="requestDetails?.metrics?.cpu?.total_cpu_ms ? Math.round(requestDetails.metrics.cpu.total_cpu_ms) + 'ms' : 'N/A'"></p>
+                        </div>
+                        <div class="bg-black/50 rounded-lg p-4 border border-white/5">
+                            <p class="text-xs text-gray-500 uppercase tracking-wider mb-1">1m Server Load</p>
+                            <p class="text-lg font-bold text-purple-400" x-text="requestDetails?.metrics?.cpu?.load_avg_1m !== undefined ? requestDetails.metrics.cpu.load_avg_1m.toFixed(2) : 'N/A'"></p>
+                        </div>
+                    </div>
+
                     <h4 class="font-semibold text-white mb-4 border-b border-white/10 pb-2">Time Breakdown</h4>
                     <div class="bg-black/50 rounded-lg border border-white/5 overflow-hidden mb-8 p-4">
                         <div class="flex items-center justify-between mb-2 text-sm">
@@ -371,12 +391,51 @@
                                 <span class="ml-2 font-bold text-orange-400" x-text="(requestDetails?.metrics?.database?.total_time || 0).toFixed(2) + 'ms'"></span>
                             </div>
                         </div>
-                        <div class="p-4 max-h-64 overflow-y-auto font-mono text-xs text-blue-300 space-y-3">
+                        <div class="p-4 max-h-96 overflow-y-auto font-mono text-xs text-blue-300 space-y-3">
                             <template x-for="(query, idx) in (requestDetails?.metrics?.database?.queries || [])">
-                                <div class="border-b border-white/5 pb-2">
+                                <div class="border-b border-white/5 pb-3" x-data="{ showExplain: false }">
                                     <div class="text-orange-400 float-right" x-text="query.time.toFixed(2) + 'ms'"></div>
                                     <div x-text="query.sql" class="mb-1 whitespace-pre-wrap break-all"></div>
-                                    <div class="text-gray-500 break-all" x-show="query.bindings.length" x-text="'Bindings: ' + JSON.stringify(query.bindings)"></div>
+                                    <div class="text-gray-500 break-all mb-2" x-show="query.bindings && query.bindings.length" x-text="'Bindings: ' + JSON.stringify(query.bindings)"></div>
+                                    
+                                    <!-- Explain toggler -->
+                                    <template x-if="query.explain">
+                                        <div class="mt-2">
+                                            <button @click="showExplain = !showExplain" class="px-2 py-1 bg-white/10 hover:bg-white/20 text-[10px] rounded text-gray-300 font-semibold transition-colors flex items-center gap-1 focus:outline-none">
+                                                <svg class="w-3 h-3 transition-transform" :class="showExplain ? 'rotate-90' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M9 5l7 7-7 7" />
+                                                </svg>
+                                                Explain Plan
+                                            </button>
+                                            
+                                            <div x-show="showExplain" x-transition class="mt-2 bg-black/60 rounded border border-white/10 p-3 overflow-x-auto text-[10px] text-gray-300 w-full">
+                                                <template x-if="query.explain.error">
+                                                    <div class="text-red-400 font-mono" x-text="'Error running EXPLAIN: ' + query.explain.error"></div>
+                                                </template>
+                                                
+                                                <template x-if="!query.explain.error">
+                                                    <table class="w-full text-left font-mono border-collapse">
+                                                        <thead>
+                                                            <tr class="border-b border-white/20 text-gray-400">
+                                                                <template x-for="key in Object.keys(query.explain[0] || {})">
+                                                                    <th class="pb-1 pr-4 font-bold capitalize whitespace-nowrap" x-text="key"></th>
+                                                                </template>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <template x-for="row in query.explain">
+                                                                <tr class="border-b border-white/5 hover:bg-white/5">
+                                                                    <template x-for="val in Object.values(row)">
+                                                                        <td class="py-1 pr-4 whitespace-nowrap text-gray-300" x-text="val !== null ? val : 'NULL'"></td>
+                                                                    </template>
+                                                                </tr>
+                                                            </template>
+                                                        </tbody>
+                                                    </table>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
                                 </div>
                             </template>
                             <div x-show="!requestDetails?.metrics?.database?.queries?.length" class="text-gray-500">No database queries executed.</div>
@@ -468,6 +527,13 @@
                                (req.status && req.status.toString().includes(q));
                     });
                 },
+                getApiUrl(endpoint) {
+                    let path = window.location.pathname;
+                    if (!path.endsWith('/')) {
+                        path += '/';
+                    }
+                    return path + 'api/' + endpoint;
+                },
                 init() {
                     this.fetchData();
                     setInterval(() => {
@@ -477,7 +543,7 @@
                     }, 5000);
                 },
                 fetchData() {
-                    fetch('{{ preg_replace("/^https?:/", "", url(config("observatory.route_prefix", "observatory") . "/api/requests")) }}')
+                    fetch(this.getApiUrl('requests'))
                         .then(res => res.json())
                         .then(data => {
                             this.requests = data.data;
@@ -493,7 +559,7 @@
                     this.loadingDetails = true;
                     this.requestDetails = null;
                     
-                    fetch('{{ preg_replace("/^https?:/", "", url(config("observatory.route_prefix", "observatory") . "/api/requests")) }}/' + id)
+                    fetch(this.getApiUrl('requests/' + id))
                         .then(res => res.json())
                         .then(data => {
                             this.requestDetails = data;
@@ -508,7 +574,7 @@
                     this.scanning = true;
                     this.scanResults[type] = [];
                     
-                    fetch('{{ preg_replace("/^https?:/", "", url(config("observatory.route_prefix", "observatory") . "/api/scan")) }}/' + type)
+                    fetch(this.getApiUrl('scan/' + type))
                         .then(res => {
                             if (!res.ok) throw new Error('Network response was not ok');
                             return res.json();

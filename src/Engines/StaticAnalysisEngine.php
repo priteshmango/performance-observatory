@@ -99,6 +99,195 @@ class StaticAnalysisEngine
             ];
         }
 
+        // 6. PHP Version Check
+        $phpVersion = PHP_VERSION;
+        if (version_compare($phpVersion, '8.2.0', '<')) {
+            $checks[] = [
+                'severity' => 'warning',
+                'title' => 'Outdated PHP Version',
+                'description' => 'Running PHP ' . $phpVersion . '. PHP 8.1 and earlier are End-of-Life (EOL) and no longer receive security updates.',
+                'solution' => 'Upgrade your server to PHP 8.2 or 8.3 for security and performance optimizations.'
+            ];
+        } else {
+            $checks[] = [
+                'severity' => 'success',
+                'title' => 'PHP Version',
+                'description' => 'Running PHP ' . $phpVersion . ' (actively supported and optimized).',
+                'solution' => ''
+            ];
+        }
+
+        // 7. PHP Memory Limit Check
+        $memLimitStr = ini_get('memory_limit');
+        $value = (int) $memLimitStr;
+        $unit = strtolower(substr($memLimitStr, -1));
+        
+        switch ($unit) {
+            case 'g':
+                $memLimitMb = $value * 1024;
+                break;
+            case 'm':
+                $memLimitMb = $value;
+                break;
+            case 'k':
+                $memLimitMb = (int) round($value / 1024);
+                break;
+            default:
+                $memLimitMb = $value === -1 ? -1 : (int) round($value / 1024 / 1024);
+                break;
+        }
+
+        if ($memLimitMb !== -1 && $memLimitMb < 256) {
+            $checks[] = [
+                'severity' => 'warning',
+                'title' => 'PHP Memory Limit',
+                'description' => 'Your PHP memory limit is set to ' . $memLimitStr . '. Laravel and its packages can consume significant memory for complex requests, queue tasks, or PDF generation.',
+                'solution' => 'Increase memory_limit to at least 256M or 512M in your php.ini configuration.'
+            ];
+        } else {
+            $checks[] = [
+                'severity' => 'success',
+                'title' => 'PHP Memory Limit',
+                'description' => 'Your PHP memory limit is ' . $memLimitStr . ' (recommended >= 256M).',
+                'solution' => ''
+            ];
+        }
+
+        // 8. PHP Execution Timeout Check
+        $maxExecTime = (int) ini_get('max_execution_time');
+        if ($maxExecTime === 0 || $maxExecTime > 120) {
+            $checks[] = [
+                'severity' => 'warning',
+                'title' => 'High PHP Execution Timeout',
+                'description' => 'Max execution time is set to ' . ($maxExecTime ?: 'unlimited') . 's. Long-running requests can lock up FPM worker processes, leading to gateway timeouts during traffic spikes.',
+                'solution' => 'Set max_execution_time to a reasonable limit (e.g., 30s or 60s) in php.ini. Run long-running tasks in background queues instead.'
+            ];
+        } elseif ($maxExecTime < 30) {
+            $checks[] = [
+                'severity' => 'warning',
+                'title' => 'Low PHP Execution Timeout',
+                'description' => 'Max execution time is set to ' . $maxExecTime . 's. Slow web requests or large exports might be prematurely terminated.',
+                'solution' => 'Increase max_execution_time to 30s or 60s in php.ini.'
+            ];
+        } else {
+            $checks[] = [
+                'severity' => 'success',
+                'title' => 'PHP Execution Timeout',
+                'description' => 'Max execution time is configured to ' . $maxExecTime . 's (optimal for web requests).',
+                'solution' => ''
+            ];
+        }
+
+        // 9. PHP Upload Limits Check
+        $uploadMax = ini_get('upload_max_filesize');
+        $postMax = ini_get('post_max_size');
+        $uploadVal = (int) $uploadMax;
+        $uploadUnit = strtolower(substr($uploadMax, -1));
+        
+        switch ($uploadUnit) {
+            case 'g':
+                $uploadMb = $uploadVal * 1024;
+                break;
+            case 'm':
+                $uploadMb = $uploadVal;
+                break;
+            case 'k':
+                $uploadMb = (int) round($uploadVal / 1024);
+                break;
+            default:
+                $uploadMb = (int) round($uploadVal / 1024 / 1024);
+                break;
+        }
+
+        if ($uploadMb <= 2) {
+            $checks[] = [
+                'severity' => 'warning',
+                'title' => 'PHP Upload Limits',
+                'description' => 'Your upload limits are very restrictive: upload_max_filesize is ' . $uploadMax . ' and post_max_size is ' . $postMax . '. Users will be unable to upload larger files or attachments.',
+                'solution' => 'Increase both upload_max_filesize and post_max_size (e.g. to 20M or 50M) in php.ini.'
+            ];
+        } else {
+            $checks[] = [
+                'severity' => 'success',
+                'title' => 'PHP Upload Limits',
+                'description' => 'Upload limits are configured (upload_max_filesize: ' . $uploadMax . ', post_max_size: ' . $postMax . ').',
+                'solution' => ''
+            ];
+        }
+
+        // 10. Server Hardware Specs Information Check
+        $totalMemory = 'Unknown';
+        $cpuCount = 'Unknown';
+        if (file_exists('/proc/meminfo') && is_readable('/proc/meminfo')) {
+            $meminfo = @file_get_contents('/proc/meminfo');
+            if ($meminfo && preg_match('/MemTotal:\s+(\d+)\s+kB/', $meminfo, $matches)) {
+                $totalMemory = round($matches[1] / 1024 / 1024, 2) . ' GB';
+            }
+        }
+        if (file_exists('/proc/cpuinfo') && is_readable('/proc/cpuinfo')) {
+            $cpuinfo = @file_get_contents('/proc/cpuinfo');
+            if ($cpuinfo) {
+                $cpuCount = substr_count($cpuinfo, 'processor') ?: 'Unknown';
+            }
+        }
+        $checks[] = [
+            'severity' => 'success',
+            'title' => 'Server Hardware Specs',
+            'description' => 'Scanned infrastructure specs: CPU Cores: ' . $cpuCount . ', Installed System Memory (RAM): ' . $totalMemory . '.',
+            'solution' => ''
+        ];
+
+        // 11. Laravel Scheduled Tasks Check
+        try {
+            $kernel = app(\Illuminate\Contracts\Console\Kernel::class);
+            if (method_exists($kernel, 'schedule')) {
+                $refMethod = new \ReflectionMethod($kernel, 'schedule');
+                $refMethod->setAccessible(true);
+                $schedule = app(\Illuminate\Console\Scheduling\Schedule::class);
+                $refMethod->invoke($kernel, $schedule);
+            } else {
+                $schedule = app(\Illuminate\Console\Scheduling\Schedule::class);
+            }
+            
+            $events = $schedule->events();
+            $taskCount = count($events);
+            
+            if ($taskCount > 0) {
+                $taskList = [];
+                $slicedEvents = array_slice($events, 0, 10);
+                foreach ($slicedEvents as $event) {
+                    $desc = $event->command ? $event->command : ($event->description ?: 'Closure Task');
+                    $desc = preg_replace('/\'?\bphp\b\'?\s+\'?artisan\'?/', 'php artisan', $desc);
+                    $taskList[] = '• `' . $event->expression . '` - ' . $desc;
+                }
+                $taskListStr = implode("\n", $taskList);
+                if ($taskCount > 10) {
+                    $taskListStr .= "\n... and " . ($taskCount - 10) . " more tasks.";
+                }
+                
+                $checks[] = [
+                    'severity' => 'success',
+                    'title' => 'Laravel Scheduled Tasks (' . $taskCount . ' defined)',
+                    'description' => "Found {$taskCount} scheduled background task(s) configured in the application console kernel:\n" . $taskListStr,
+                    'solution' => 'Make sure you have added the following cron entry on your production server: * * * * * cd ' . base_path() . ' && php artisan schedule:run >> /dev/null 2>&1'
+                ];
+            } else {
+                $checks[] = [
+                    'severity' => 'warning',
+                    'title' => 'Laravel Scheduled Tasks (0 defined)',
+                    'description' => 'No scheduled tasks were detected in the Console Kernel. If your application sends scheduled emails, cleanups, or periodic syncs, you need to configure them.',
+                    'solution' => 'Define scheduled tasks in your App\Console\Kernel schedule() method or routes/console.php.'
+                ];
+            }
+        } catch (\Throwable $e) {
+            $checks[] = [
+                'severity' => 'warning',
+                'title' => 'Laravel Scheduled Tasks Scan Failed',
+                'description' => 'Could not resolve the Console Kernel to scan for scheduled tasks: ' . $e->getMessage(),
+                'solution' => 'Check your Console Kernel configuration or scheduling routes.'
+            ];
+        }
+
         return $checks;
     }
 
@@ -214,6 +403,97 @@ class StaticAnalysisEngine
                     'title' => "Missing Indexes on Table: {$tbl['table']}",
                     'description' => "The database table '{$tbl['table']}' has grown large ({$tbl['rows']} rows) but is missing indexes (except possibly the primary key). Queries searching this table will run table scans.",
                     'solution' => 'Create a database migration to add indexes to columns frequently used in WHERE or JOIN clauses. E.g., $table->index(\'column_name\');'
+                ];
+            }
+        }
+
+        // 4. Unused Database Indexes Check
+        if ($driver === 'mysql') {
+            try {
+                $unusedIndexes = DB::select("
+                    SELECT 
+                        OBJECT_SCHEMA AS `schema`,
+                        OBJECT_NAME AS `table`,
+                        INDEX_NAME AS `index`
+                    FROM performance_schema.table_io_waits_summary_by_index_usage
+                    WHERE OBJECT_SCHEMA = DATABASE() 
+                      AND INDEX_NAME IS NOT NULL 
+                      AND INDEX_NAME != 'PRIMARY' 
+                      AND count_star = 0
+                ");
+                
+                if (empty($unusedIndexes)) {
+                    // Try sys schema fallback
+                    $unusedIndexes = DB::select("
+                        SELECT OBJECT_SCHEMA as `schema`, OBJECT_NAME as `table`, INDEX_NAME as `index`
+                        FROM sys.schema_unused_indexes 
+                        WHERE OBJECT_SCHEMA = DATABASE()
+                    ");
+                }
+
+                if (count($unusedIndexes) > 0) {
+                    foreach ($unusedIndexes as $idx) {
+                        $checks[] = [
+                            'severity' => 'warning',
+                            'title' => 'Unused Database Index: ' . $idx->table . '.' . $idx->index,
+                            'description' => "The database index '" . $idx->index . "' on table '" . $idx->table . "' has not been used for any read operations since the database server started or stats were reset. Unused indexes slow down insert, update, and delete queries, and consume memory/disk space.",
+                            'solution' => "If this index is indeed redundant, consider dropping it: ALTER TABLE `" . $idx->table . "` DROP INDEX `" . $idx->index . "`;"
+                        ];
+                    }
+                } else {
+                    $checks[] = [
+                        'severity' => 'success',
+                        'title' => 'Unused Database Indexes',
+                        'description' => 'No unused database indexes were detected. All indexes are active or the performance schema does not report any unused indexes.',
+                        'solution' => ''
+                    ];
+                }
+            } catch (\Throwable $e) {
+                $checks[] = [
+                    'severity' => 'success',
+                    'title' => 'Unused Database Indexes Check',
+                    'description' => 'Could not inspect performance_schema or sys views for unused indexes: ' . $e->getMessage() . '. This is common if performance schema is disabled or if user lacks permissions.',
+                    'solution' => ''
+                ];
+            }
+        } elseif ($driver === 'pgsql') {
+            try {
+                $unusedIndexes = DB::select("
+                    SELECT
+                        schemaname AS schema_name,
+                        relname AS table_name,
+                        indexrelname AS index_name,
+                        idx_scan AS index_scans
+                    FROM pg_stat_user_indexes
+                    WHERE idx_scan = 0
+                      AND schemaname = 'public'
+                      AND indexrelname NOT LIKE '%_pkey'
+                      AND indexrelname NOT LIKE '%_unique'
+                ");
+
+                if (count($unusedIndexes) > 0) {
+                    foreach ($unusedIndexes as $idx) {
+                        $checks[] = [
+                            'severity' => 'warning',
+                            'title' => 'Unused Database Index: ' . $idx->table_name . '.' . $idx->index_name,
+                            'description' => "The database index '" . $idx->index_name . "' on table '" . $idx->table_name . "' has 0 scans recorded. Unused indexes slow down write operations and waste disk space/memory.",
+                            'solution' => "Consider dropping the unused index: DROP INDEX \"" . $idx->index_name . "\";"
+                        ];
+                    }
+                } else {
+                    $checks[] = [
+                        'severity' => 'success',
+                        'title' => 'Unused Database Indexes',
+                        'description' => 'No unused database indexes were detected in the public schema.',
+                        'solution' => ''
+                    ];
+                }
+            } catch (\Throwable $e) {
+                $checks[] = [
+                    'severity' => 'success',
+                    'title' => 'Unused Database Indexes Check',
+                    'description' => 'Could not inspect pg_stat_user_indexes for unused indexes: ' . $e->getMessage(),
+                    'solution' => ''
                 ];
             }
         }

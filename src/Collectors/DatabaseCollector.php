@@ -6,6 +6,7 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Database\Events\TransactionCommitted;
 use Illuminate\Database\Events\TransactionRolledBack;
+use Illuminate\Support\Facades\DB;
 
 class DatabaseCollector extends AbstractCollector
 {
@@ -37,19 +38,26 @@ class DatabaseCollector extends AbstractCollector
         });
     }
 
+    protected $explaining = false;
+
     protected function onQueryExecuted(QueryExecuted $event): void
     {
         $time = $event->time; // in milliseconds
         
         $this->connections[$event->connectionName] = ($this->connections[$event->connectionName] ?? 0) + 1;
 
+        $threshold = config('observatory.slow_query_threshold', 50);
+        $explain = null;
+        if ($time >= $threshold) {
+            $explain = $this->explainQuery($event);
+        }
+
         $this->queries[] = [
             'sql' => $event->sql,
             'bindings' => $this->formatBindings($event->bindings),
             'time' => $time,
             'connection' => $event->connectionName,
-            // In a real robust implementation, we would execute an EXPLAIN query here async
-            // 'explain' => $this->explainQuery($event)
+            'explain' => $explain,
         ];
 
         $this->record('queries', $this->queries);
@@ -57,6 +65,33 @@ class DatabaseCollector extends AbstractCollector
         $this->record('transactions', $this->transactions);
         $this->record('total_time', array_sum(array_column($this->queries, 'time')));
         $this->record('total_queries', count($this->queries));
+    }
+
+    protected function explainQuery(QueryExecuted $event): ?array
+    {
+        if ($this->explaining) {
+            return null;
+        }
+
+        $sql = trim($event->sql);
+        // Only run EXPLAIN on SELECT queries to be completely safe
+        if (!preg_match('/^\s*select\b/i', $sql)) {
+            return null;
+        }
+
+        $this->explaining = true;
+        try {
+            $explainSql = "EXPLAIN " . $event->sql;
+            $explainData = DB::connection($event->connectionName)->select($explainSql, $event->bindings);
+            
+            return collect($explainData)->map(function ($row) {
+                return (array) $row;
+            })->toArray();
+        } catch (\Throwable $e) {
+            return ['error' => $e->getMessage()];
+        } finally {
+            $this->explaining = false;
+        }
     }
 
     protected function formatBindings($bindings): array
