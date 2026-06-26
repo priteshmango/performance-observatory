@@ -75,4 +75,27 @@ return [
     |
     */
     'sample_rate' => env('OBSERVATORY_SAMPLE_RATE', 100),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Database Query Profiling
+    |--------------------------------------------------------------------------
+    |
+    | Here you can configure database query explaining. Running EXPLAIN
+    | synchronously during a web request can add significant overhead.
+    | It is highly recommended to disable this in production environments.
+    |
+    */
+    'explain_queries' => env('OBSERVATORY_EXPLAIN_QUERIES', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Slow Query Threshold
+    |--------------------------------------------------------------------------
+    |
+    | The minimum execution time (in milliseconds) for a query to be considered
+    | slow. This only triggers an EXPLAIN if explain_queries is enabled.
+    |
+    */
+    'slow_query_threshold' => env('OBSERVATORY_SLOW_QUERY_THRESHOLD', 50),
 ];

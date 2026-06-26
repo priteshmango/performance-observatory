@@ -34,20 +34,23 @@ class PerformanceObservatoryServiceProvider extends ServiceProvider
         ], 'observatory-assets');
 
         $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
-        $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');
-        $this->loadRoutesFrom(__DIR__ . '/../routes/web.php');
-        $this->loadViewsFrom(__DIR__ . '/../resources/views', 'observatory');
 
-        // Boot the manager to start collecting if enabled
-        if (config('observatory.enabled') && $this->shouldSample()) {
-            $manager = $this->app->make(ObservatoryManager::class);
-            $manager->boot();
+        if (config('observatory.enabled')) {
+            $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');
+            $this->loadRoutesFrom(__DIR__ . '/../routes/web.php');
+            $this->loadViewsFrom(__DIR__ . '/../resources/views', 'observatory');
 
-            // Inject parent request ID into all outgoing HTTP client requests
-            if (class_exists(\Illuminate\Support\Facades\Http::class) && method_exists(\Illuminate\Support\Facades\Http::class, 'globalRequestMiddleware')) {
-                \Illuminate\Support\Facades\Http::globalRequestMiddleware(function (\Psr\Http\Message\RequestInterface $request) use ($manager) {
-                    return $request->withHeader('X-Observatory-Parent-Request-Id', $manager->getRequestId());
-                });
+            // Boot the manager to start collecting if enabled and sampled
+            if ($this->shouldSample()) {
+                $manager = $this->app->make(ObservatoryManager::class);
+                $manager->boot();
+
+                // Inject parent request ID into all outgoing HTTP client requests
+                if (class_exists(\Illuminate\Support\Facades\Http::class) && method_exists(\Illuminate\Support\Facades\Http::class, 'globalRequestMiddleware')) {
+                    \Illuminate\Support\Facades\Http::globalRequestMiddleware(function (\Psr\Http\Message\RequestInterface $request) use ($manager) {
+                        return $request->withHeader('X-Observatory-Parent-Request-Id', $manager->getRequestId());
+                    });
+                }
             }
         }
     }

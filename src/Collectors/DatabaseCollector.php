@@ -40,49 +40,60 @@ class DatabaseCollector extends AbstractCollector
 
     protected $explaining = false;
 
-    protected function onQueryExecuted(QueryExecuted $event): void
+    public function getData(): array
     {
-        $time = $event->time; // in milliseconds
-        
-        $this->connections[$event->connectionName] = ($this->connections[$event->connectionName] ?? 0) + 1;
-
         $threshold = config('observatory.slow_query_threshold', 50);
-        $explain = null;
-        if ($time >= $threshold) {
-            $explain = $this->explainQuery($event);
-        }
+        $explainQueries = config('observatory.explain_queries', false);
 
-        $this->queries[] = [
-            'sql' => $event->sql,
-            'bindings' => $this->formatBindings($event->bindings),
-            'time' => $time,
-            'connection' => $event->connectionName,
-            'explain' => $explain,
-        ];
+        if ($explainQueries) {
+            foreach ($this->queries as &$query) {
+                if ($query['time'] >= $threshold) {
+                    $query['explain'] = $this->explainQuery($query['sql'], $query['bindings'], $query['connection']);
+                }
+            }
+            unset($query); // break the reference
+        }
 
         $this->record('queries', $this->queries);
         $this->record('connections_used', $this->connections);
         $this->record('transactions', $this->transactions);
         $this->record('total_time', array_sum(array_column($this->queries, 'time')));
         $this->record('total_queries', count($this->queries));
+
+        return parent::getData();
     }
 
-    protected function explainQuery(QueryExecuted $event): ?array
+    protected function onQueryExecuted(QueryExecuted $event): void
+    {
+        $time = $event->time; // in milliseconds
+        
+        $this->connections[$event->connectionName] = ($this->connections[$event->connectionName] ?? 0) + 1;
+
+        $this->queries[] = [
+            'sql' => $event->sql,
+            'bindings' => $this->formatBindings($event->bindings),
+            'time' => $time,
+            'connection' => $event->connectionName,
+            'explain' => null,
+        ];
+    }
+
+    protected function explainQuery(string $sql, array $bindings, string $connectionName): ?array
     {
         if ($this->explaining) {
             return null;
         }
 
-        $sql = trim($event->sql);
+        $trimmedSql = trim($sql);
         // Only run EXPLAIN on SELECT queries to be completely safe
-        if (!preg_match('/^\s*select\b/i', $sql)) {
+        if (!preg_match('/^\s*select\b/i', $trimmedSql)) {
             return null;
         }
 
         $this->explaining = true;
         try {
-            $explainSql = "EXPLAIN " . $event->sql;
-            $explainData = DB::connection($event->connectionName)->select($explainSql, $event->bindings);
+            $explainSql = "EXPLAIN " . $sql;
+            $explainData = DB::connection($connectionName)->select($explainSql, $bindings);
             
             return collect($explainData)->map(function ($row) {
                 return (array) $row;
